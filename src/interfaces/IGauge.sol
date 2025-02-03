@@ -7,4 +7,6 @@ interface IGauge {
     function withdraw(uint shares) external;
     function balanceOf(address account) external returns (uint);
     function voter() external view returns(address);
+    function rewardToken() external view returns(address);
+    function stakingToken() external view returns(address);
 }

@@ -39,4 +39,11 @@ interface ICrossDomainMessenger {
         bytes calldata _message,
         uint32 _gasLimit
     ) external;
+
+    function relayMessage(
+        address,
+        address,
+        bytes calldata,
+        uint
+    ) external;
 }

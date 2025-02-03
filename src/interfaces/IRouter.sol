@@ -305,4 +305,6 @@ interface IRouter {
         address tokenB,
         address factory
     ) external view returns (uint256 ratio);
+
+    function defaultFactory() external view returns(address);
 }
