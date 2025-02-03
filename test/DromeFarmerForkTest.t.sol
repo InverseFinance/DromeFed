@@ -45,7 +45,7 @@ contract DromeFarmerForkTest is Test {
     error LiquiditySlippageTooHigh();
     
     function setUp() public {
-        vm.createSelectFork(vm.rpcUrl("base"), 25873489);
+        vm.createSelectFork(vm.rpcUrl("base"), 24873489);
         vm.label(address(rewardToken), "rewardToken");
         vm.label(address(nUSDC), "nUSDC");
         vm.label(address(USDC), "USDC");
@@ -66,12 +66,12 @@ contract DromeFarmerForkTest is Test {
             dolaGauge
         );
         rewardToken = dromeFarmer.rewardToken();
-        vm.makePersistent(address(dromeFarmer));
 
         vm.stopPrank();
 
         address voter = dolaGauge.voter();
         deal(address(rewardToken), address(voter), 1000 ether);
+        deal(address(nUSDC), address(0xe8bDbCBC269528daE5bB9E8Fa5917a98FB9191e7), 1000 ether);
         vm.startPrank(voter);
         rewardToken.approve(address(dolaGauge), 1000 ether);
         dolaGauge.notifyRewardAmount(1000 ether);
@@ -187,6 +187,14 @@ contract DromeFarmerForkTest is Test {
         vm.startPrank(address(l2CrossDomainMessenger));
         mockXDomainMessageSender(gov);
         dromeFarmer.emergencyWithdrawToL1(address(DOLA), 1000e6);
+    }
+
+    function test_withdrawToL1Fed() public {
+        deal(address(DOLA), address(dromeFarmer), dolaAmount);
+        uint prevDolaAmount = DOLA.balanceOf(address(dromeFarmer));
+        vm.prank(chair);
+        dromeFarmer.withdrawToL1Fed(dolaAmount);
+        assertEq(prevDolaAmount - dolaAmount, DOLA.balanceOf(address(dromeFarmer)));
     }
 
     function test_withdrawToL1FedBridged() public {
@@ -341,7 +349,7 @@ contract DromeFarmerForkTest is Test {
     function test_SwapUsdcToDola_Fails_WhenSlippageGtMaxUsdcNativeToDolaSlippage() public {
         deal(address(nUSDC), address(dromeFarmer), USDCAmount*5);
 
-        uint USDCToSwap = USDCAmount*2000;
+        uint USDCToSwap = USDCAmount*3000;
         deal(address(nUSDC), address(user), USDCToSwap);
         vm.startPrank(user);
         nUSDC.approve(address(router), type(uint).max);
@@ -433,13 +441,76 @@ contract DromeFarmerForkTest is Test {
         assertEq(dromeFarmer.pendingGov(), address(0), "pendingGov failed to be set as 0 address");
     }
 
-    function test_changeFed_fail_whenCalledByNonGov() public {
+    function test_changeFed() public {
         vm.startPrank(user);
 
         vm.expectRevert(
             abi.encodeWithSelector(OnlyL1Role.selector, dromeFarmer.gov(), "gov")
         );
         dromeFarmer.changeFed(user);
+
+        assertNotEq(dromeFarmer.l1Fed(), user);
+
+        vm.startPrank(address(l2CrossDomainMessenger));
+        mockXDomainMessageSender(gov);
+        dromeFarmer.changeFed(user);
+        vm.stopPrank();
+
+        assertEq(dromeFarmer.l1Fed(), user);
+    }
+
+    function test_changeChair() public {
+        vm.startPrank(user);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(OnlyL1Role.selector, dromeFarmer.gov(), "gov")
+        );
+        dromeFarmer.changeChair(user);
+
+        assertNotEq(dromeFarmer.chair(), user);
+
+        vm.startPrank(address(l2CrossDomainMessenger));
+        mockXDomainMessageSender(gov);
+        dromeFarmer.changeChair(user);
+        vm.stopPrank();
+
+        assertEq(dromeFarmer.chair(), user);
+    }
+
+    function test_changeTreasury() public {
+        vm.startPrank(user);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(OnlyL1Role.selector, dromeFarmer.gov(), "gov")
+        );
+        dromeFarmer.changeTreasury(user);
+
+        assertNotEq(dromeFarmer.treasury(), user);
+
+        vm.startPrank(address(l2CrossDomainMessenger));
+        mockXDomainMessageSender(gov);
+        dromeFarmer.changeTreasury(user);
+        vm.stopPrank();
+
+        assertEq(dromeFarmer.treasury(), user);
+    }
+
+    function test_changeGuardian() public {
+        vm.startPrank(user);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(OnlyL1Role.selector, dromeFarmer.gov(), "gov")
+        );
+        dromeFarmer.changeGuardian(user);
+
+        assertNotEq(dromeFarmer.guardian(), user);
+
+        vm.startPrank(address(l2CrossDomainMessenger));
+        mockXDomainMessageSender(gov);
+        dromeFarmer.changeGuardian(user);
+        vm.stopPrank();
+
+        assertEq(dromeFarmer.guardian(), user);
     }
 
     //My loyal helpers
