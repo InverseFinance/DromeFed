@@ -21,6 +21,7 @@ contract DromeFarmer {
     mapping(address => mapping(address => uint)) public maxSwapSlippage;
     mapping(address => bool) public allowedSwaps;
     uint public maxSlippageBps;
+    uint public maxGuardianSetableSlippageBps;
 
     uint public constant DOLA_USDC_CONVERSION_MULTI= 1e12;
     uint public constant PRECISION = 10_000;
@@ -232,18 +233,6 @@ contract DromeFarmer {
         bridge.withdrawTo(address(USDC), l1Fed, usdcAmount, 0, "");
     }
     /**
-     * @notice Withdraws `amount` of `l2Token` to address `to` on L1. Will take 7 days before withdraw is claimable.
-     * @param l2Token Address of the L2 token to be withdrawn
-     * @param amount Amount of the L2 token to be withdrawn
-     */
-    function emergencyWithdrawToL1(address l2Token, uint amount) external onlyL1Role(gov, "gov") {
-        if (amount > IERC20(l2Token).balanceOf(address(this))) revert NotEnoughTokens();
-
-        IERC20(l2Token).approve(address(bridge), amount);
-        bridge.withdrawTo(l2Token, treasury, amount, 0, "");
-    }
-
-    /**
      * @notice Swap `usdcAmount` of USDC to DOLA through aerodrome.
      * @param sellStable Gov approved stable to sell
      * @param buyStable Gov approved stable to buy
@@ -325,7 +314,7 @@ contract DromeFarmer {
      * @param newMaxSlippageBps The new maximum allowed loss for DOLA -> USDC swaps. 1 = 0.01%
      */
     function setMaxSwapSlippage(address stable1, address stable2, uint newMaxSlippageBps) onlyRole(guardian, "guardian") external {
-        if (newMaxSlippageBps > 10000) revert MaxSlippageTooHigh();
+        if (newMaxSlippageBps > maxGuardianSetableSlippageBps) revert MaxSlippageTooHigh();
         maxSwapSlippage[stable1][stable2] = newMaxSlippageBps;
         maxSwapSlippage[stable2][stable2] = newMaxSlippageBps;
     }
@@ -335,18 +324,39 @@ contract DromeFarmer {
      * @param newMaxSlippageBps The new maximum allowed loss for adding/removing liquidity from DOLA/USDC pool. 1 = 0.01%
      */
     function setMaxSlippageLP(uint newMaxSlippageBps) onlyRole(guardian, "guardian") external {
-        if (newMaxSlippageBps > 10000) revert MaxSlippageTooHigh();
+        if (newMaxSlippageBps > maxGuardianSetableSlippageBps) revert MaxSlippageTooHigh();
         maxSlippageBps = newMaxSlippageBps;
+    }
+
+    /**
+     * @notice Sets the maximum slippage setable by the guardian role
+     * @param _maxGuardianSetableSlippageBps Max slippage in BPS setable by the guardian role
+     */
+    function setMaxGuardianSetableSlippage(uint _maxGuardianSetableSlippageBps) onlyL1Role(gov, "gov") external {
+        if(_maxGuardianSetableSlippageBps > 10000) revert MaxSlippageTooHigh();
+        maxGuardianSetableSlippageBps = _maxGuardianSetableSlippageBps;
+    }
+
+    /**
+     * @notice Withdraws `amount` of `l2Token` to address `to` on L1. Will take 7 days before withdraw is claimable.
+     * @param l2Token Address of the L2 token to be withdrawn
+     * @param amount Amount of the L2 token to be withdrawn
+     */
+    function emergencyWithdrawToL1(address l2Token, uint amount) external onlyL1Role(gov, "gov") {
+        if (amount > IERC20(l2Token).balanceOf(address(this))) revert NotEnoughTokens();
+
+        IERC20(l2Token).approve(address(bridge), amount);
+        bridge.withdrawTo(l2Token, treasury, amount, 0, "");
     }
 
     /**
      * @notice Method for `gov` to change `pendingGov` address
      * @dev `pendingGov` will have to call `claimGov` to complete `gov` transfer
      * @dev `pendingGov` should be an L1 address
-     * @param newPendingGov_ L1 address to be set as `pendingGov`
+     * @param _pendingGov L1 address to be set as `pendingGov`
      */
-    function setPendingGov(address newPendingGov_) onlyL1Role(gov, "gov") external {
-        pendingGov = newPendingGov_;
+    function setPendingGov(address _pendingGov) onlyL1Role(gov, "gov") external {
+        pendingGov = _pendingGov;
     }
 
     /**
@@ -359,34 +369,34 @@ contract DromeFarmer {
 
     /**
      * @notice Method for gov to change treasury address, the address that receives all rewards
-     * @param newTreasury_ L2 address to be set as treasury
+     * @param _treasury L2 address to be set as treasury
      */
-    function changeTreasury(address newTreasury_) external onlyL1Role(gov, "gov") {
-        treasury = newTreasury_;
+    function changeTreasury(address _treasury) external onlyL1Role(gov, "gov") {
+        treasury = _treasury;
     }
 
     /**
      * @notice Method for gov to change the chair
-     * @param newChair_ address to be set as chair
+     * @param _chair address to be set as chair
      */
-    function changeChair(address newChair_) external onlyL1Role(gov, "gov") {
-        chair = newChair_;
+    function changeChair(address _chair) external onlyL1Role(gov, "gov") {
+        chair = _chair;
     }
 
     /**
      * @notice Method for gov to change the guardian
-     * @param guardian_ L1 address to be set as guardian
+     * @param _guardian L1 address to be set as guardian
      */
-    function changeGuardian(address guardian_) external onlyL1Role(gov, "gov") {
-        guardian = guardian_;
+    function changeGuardian(address _guardian) external onlyL1Role(gov, "gov") {
+        guardian = _guardian;
     }
 
     /**
      * @notice Method for gov to change the L1 l1Fed address
      * @dev l1Fed is the L1 address that receives all bridged DOLA/USDC from both withdrawToL1Fed functions
-     * @param newFed_ L1 address to be set as l1Fed
+     * @param _fed L1 address to be set as l1Fed
      */
-    function changeFed(address newFed_) external onlyL1Role(gov, "gov") {
-        l1Fed = newFed_;
+    function changeL1Fed(address _fed) external onlyL1Role(gov, "gov") {
+        l1Fed = _fed;
     }
 }
