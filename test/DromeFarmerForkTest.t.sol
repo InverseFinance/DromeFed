@@ -24,7 +24,6 @@ contract DromeFarmerForkTest is Test {
     address public l1CrossDomainMessenger = 0x36BDE71C97B33Cc4729cf772aE268934f7AB70B2;
     address public treasury = 0x586CF50c2874f3e3997660c0FD0996B090FB9764;
     address public cctpBridge = 0x1682Ae6375C4E4A97e4B583BC394c861A46D8962;
-    uint nonce;
 
     //EOAs
     address user = address(69);
@@ -51,7 +50,6 @@ contract DromeFarmerForkTest is Test {
         vm.label(address(USDC), "USDC");
         vm.label(address(DOLA), "DOLA");
 
-        vm.startPrank(chair);
         dromeFarmer = new DromeFarmer(
             chair,
             guardian,
@@ -65,10 +63,13 @@ contract DromeFarmerForkTest is Test {
             router,
             dolaGauge
         );
-        rewardToken = dromeFarmer.rewardToken();
 
+        vm.startPrank(address(l2CrossDomainMessenger));
+        mockXDomainMessageSender(gov);
+        dromeFarmer.setMaxGuardianSetableSlippageBps(2000);
         vm.stopPrank();
 
+        rewardToken = dromeFarmer.rewardToken();
         address voter = dolaGauge.voter();
         deal(address(rewardToken), address(voter), 1000 ether);
         deal(address(nUSDC), address(0xe8bDbCBC269528daE5bB9E8Fa5917a98FB9191e7), 1000 ether);
@@ -106,7 +107,7 @@ contract DromeFarmerForkTest is Test {
         uint initialRewards = rewardToken.balanceOf(address(treasury));
 
         vm.prank(guardian);
-        dromeFarmer.setMaxSlippageLP(5000);
+        dromeFarmer.setMaxSlippageLP(1000);
 
         vm.startPrank(chair);
         dromeFarmer.deposit(dolaAmount / 2, USDCAmount / 2);
@@ -126,7 +127,7 @@ contract DromeFarmerForkTest is Test {
         uint initialRewards = rewardToken.balanceOf(address(treasury));
 
         vm.prank(guardian);
-        dromeFarmer.setMaxSlippageLP(5000);
+        dromeFarmer.setMaxSlippageLP(1000);
 
         vm.startPrank(chair);
         dromeFarmer.depositAll();
@@ -209,7 +210,7 @@ contract DromeFarmerForkTest is Test {
         uint initialRewards = rewardToken.balanceOf(address(treasury));
 
         vm.prank(guardian);
-        dromeFarmer.setMaxSlippageLP(5000);
+        dromeFarmer.setMaxSlippageLP(1000);
 
         vm.startPrank(chair);
         dromeFarmer.deposit(dolaAmount / 2, USDCAmount / 2);
@@ -228,7 +229,7 @@ contract DromeFarmerForkTest is Test {
         uint initialRewards = rewardToken.balanceOf(address(treasury));
 
         vm.prank(guardian);
-        dromeFarmer.setMaxSlippageLP(5000);
+        dromeFarmer.setMaxSlippageLP(1000);
 
         vm.startPrank(chair);
         dromeFarmer.deposit(dolaAmount, USDCAmount);
@@ -447,13 +448,13 @@ contract DromeFarmerForkTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(OnlyL1Role.selector, dromeFarmer.gov(), "gov")
         );
-        dromeFarmer.changeFed(user);
+        dromeFarmer.changeL1Fed(user);
 
         assertNotEq(dromeFarmer.l1Fed(), user);
 
         vm.startPrank(address(l2CrossDomainMessenger));
         mockXDomainMessageSender(gov);
-        dromeFarmer.changeFed(user);
+        dromeFarmer.changeL1Fed(user);
         vm.stopPrank();
 
         assertEq(dromeFarmer.l1Fed(), user);

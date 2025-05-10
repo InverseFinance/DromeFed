@@ -10,6 +10,19 @@ pragma solidity ^0.8.13;
 interface IPool is IERC20 {
     function getReserves() external view returns(uint, uint, uint);
 }
+interface IChainlinkPriceFeed {
+    function latestRoundData()
+        external
+        view
+        returns (
+          uint80 roundId,
+          int256 answer,
+          uint256 startedAt,
+          uint256 updatedAt,
+          uint80 answeredInRound
+        );
+    function decimals() external view returns(uint8);
+}
 
 contract DromeFarmer {
     address public chair;
@@ -17,32 +30,32 @@ contract DromeFarmer {
     address public gov;
     address public treasury;
     address public guardian;
+    address public l1Fed;
 
     mapping(address => mapping(address => uint)) public maxSwapSlippage;
     mapping(address => bool) public allowedSwaps;
     uint public maxSlippageBps;
-    uint public maxGuardianSetableSlippageBps;
+    uint public maxGuardianSetableSlippageBps = 500;
+    uint public depegEmergencyThresholdBps = 9800; //If USDC depegs by more than 2%, guardian msig can set emergency slippage parameters
 
     uint public constant DOLA_USDC_CONVERSION_MULTI= 1e12;
-    uint public constant PRECISION = 10_000;
     ICrossDomainMessenger public constant ovmL2CrossDomainMessenger = ICrossDomainMessenger(0x4200000000000000000000000000000000000007);
     IL2ERC20Bridge public constant bridge = IL2ERC20Bridge(0x4200000000000000000000000000000000000010);
-    uint32 public constant MAINNET_CCTP_DOMAIN = 0;
+    IChainlinkPriceFeed public constant usdcPriceFeed = IChainlinkPriceFeed(0x7e860098F58bBFC8648a4311b374B1D669a2bc6B);
 
     IGauge public immutable dolaGauge;// = IGauge(0xCCff5627cd544b4cBb7d048139C1A6b6Bde67885); 
     IPool public immutable lpToken;
     IERC20 public immutable rewardToken;
-    address public immutable factory;
     IRouter public immutable router;// = IRouter(0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43);
     IERC20 public immutable DOLA;
     IERC20 public immutable nUSDC;
     IERC20 public immutable USDC;
-    address public l1Fed;
     ICCTP public immutable cctp;
 
     error OnlyRole(address, string);
     error OnlyL1Role(address, string);
     error MaxSlippageTooHigh();
+    //error ThresholdTooHigh();
     error NotEnoughTokens();
     error SlippageTooHigh();
     error RestrictedToken();
@@ -73,7 +86,6 @@ contract DromeFarmer {
         dolaGauge = _dolaGauge;
         rewardToken = IERC20(_dolaGauge.rewardToken());
         lpToken = IPool(_dolaGauge.stakingToken());
-        factory = _router.defaultFactory();
         allowedSwaps[_dola] = true;
         allowedSwaps[_usdc] = true;
         allowedSwaps[_nusdc] = true;
@@ -213,14 +225,14 @@ contract DromeFarmer {
 
         bridge.withdrawTo(address(DOLA), l1Fed, dolaAmount, 0, "");
         nUSDC.approve(address(cctp), usdcAmount);
-        cctp.depositForBurn(usdcAmount, MAINNET_CCTP_DOMAIN, bytes32(uint256(uint160(l1Fed))), address(nUSDC));
+        cctp.depositForBurn(usdcAmount, 0, bytes32(uint256(uint160(l1Fed))), address(nUSDC));
     }
 
     function withdrawToL1FedNative(uint usdcAmount) external onlyRole(chair, "chair") {
         if (usdcAmount > nUSDC.balanceOf(address(this))) revert NotEnoughTokens();
         
         nUSDC.approve(address(cctp), usdcAmount);
-        cctp.depositForBurn(usdcAmount, MAINNET_CCTP_DOMAIN, bytes32(uint256(uint160(l1Fed))), address(nUSDC));
+        cctp.depositForBurn(usdcAmount, 0, bytes32(uint256(uint160(l1Fed))), address(nUSDC));
     }
 
     /**
@@ -277,6 +289,13 @@ contract DromeFarmer {
           z = 1;
        }
     }
+
+    function priceAboveEmergencyThreshold() public returns(bool) {
+        (,int usdcPrice,,,) = usdcPriceFeed.latestRoundData();
+        uint8 decimals = usdcPriceFeed.decimals();
+        return usdcPrice > int(10 ** decimals * depegEmergencyThresholdBps / 10000);
+    }
+
     function applySwapSlippage(uint amount, address sellStable, address buyStable) internal view returns(uint) {
         uint sellStableDecimals = IERC20(sellStable).decimals();
         uint buyStableDecimals = IERC20(buyStable).decimals();
@@ -286,7 +305,7 @@ contract DromeFarmer {
     }
 
     function applySlippage(uint amount, uint maxSlippage) internal pure returns(uint) {
-        return amount * (PRECISION - maxSlippage) / PRECISION;
+        return amount * (10000 - maxSlippage) / 10000;
     }
 
     /**
@@ -296,7 +315,7 @@ contract DromeFarmer {
      * @return Returns a Route[] with a single element, representing the route
      */
     function getRoute(address from, address to) internal view returns(IRouter.Route[] memory){
-        IRouter.Route memory route = IRouter.Route(from, to, true, factory);
+        IRouter.Route memory route = IRouter.Route(from, to, true, router.defaultFactory());
         IRouter.Route[] memory routeArray = new IRouter.Route[](1);
         routeArray[0] = route;
         return routeArray;
@@ -314,7 +333,7 @@ contract DromeFarmer {
      * @param newMaxSlippageBps The new maximum allowed loss for DOLA -> USDC swaps. 1 = 0.01%
      */
     function setMaxSwapSlippage(address stable1, address stable2, uint newMaxSlippageBps) onlyRole(guardian, "guardian") external {
-        if (newMaxSlippageBps > maxGuardianSetableSlippageBps) revert MaxSlippageTooHigh();
+        if (priceAboveEmergencyThreshold() && newMaxSlippageBps > maxGuardianSetableSlippageBps) revert MaxSlippageTooHigh();
         maxSwapSlippage[stable1][stable2] = newMaxSlippageBps;
         maxSwapSlippage[stable2][stable2] = newMaxSlippageBps;
     }
@@ -324,15 +343,24 @@ contract DromeFarmer {
      * @param newMaxSlippageBps The new maximum allowed loss for adding/removing liquidity from DOLA/USDC pool. 1 = 0.01%
      */
     function setMaxSlippageLP(uint newMaxSlippageBps) onlyRole(guardian, "guardian") external {
-        if (newMaxSlippageBps > maxGuardianSetableSlippageBps) revert MaxSlippageTooHigh();
+        if (priceAboveEmergencyThreshold() && newMaxSlippageBps > maxGuardianSetableSlippageBps) revert MaxSlippageTooHigh();
         maxSlippageBps = newMaxSlippageBps;
     }
 
     /**
+     * @notice Sets the depeg emergency threshold. At 9800 if USDC price drops to $0.98, the guardian address can set slippage parameters as they please.
+     * @param _depegEmergencyThresholdBps Depeg emergency threshold in bps, at 10000 lets guardian set slippage parameters at $1 USDC price, at 5000 lets guardian set slippage parameters at $0.5 usdc price.
+     */
+    function setDepegEmergencyThresholdBps(uint _depegEmergencyThresholdBps) external onlyL1Role(gov, "gov") {
+        if(_depegEmergencyThresholdBps > 10000) revert MaxSlippageTooHigh();
+        depegEmergencyThresholdBps = _depegEmergencyThresholdBps;
+    }
+    
+    /**
      * @notice Sets the maximum slippage setable by the guardian role
      * @param _maxGuardianSetableSlippageBps Max slippage in BPS setable by the guardian role
      */
-    function setMaxGuardianSetableSlippage(uint _maxGuardianSetableSlippageBps) onlyL1Role(gov, "gov") external {
+    function setMaxGuardianSetableSlippageBps(uint _maxGuardianSetableSlippageBps) external onlyL1Role(gov, "gov") {
         if(_maxGuardianSetableSlippageBps > 10000) revert MaxSlippageTooHigh();
         maxGuardianSetableSlippageBps = _maxGuardianSetableSlippageBps;
     }

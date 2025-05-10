@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
+import {DromeFarmer} from "src/DromeFarmer.sol";
 
 /**
  * @title ICrossDomainMessenger
@@ -44,15 +45,15 @@ interface ICrossDomainMessenger {
 
 contract FarmerMessenger {
     ICrossDomainMessenger immutable crossDomainMessenger;
-    address public dromeFed;
+    address public dromeFarmer;
     address public gov;
     address public pendingGov;
 
     uint32 public gasLimit = 750_000;
 
-    constructor(address _gov, address dromeFed_, address _bridge) {
+    constructor(address _gov, address _dromeFarmer, address _bridge) {
         gov = _gov;
-        dromeFed = dromeFed_;
+        dromeFarmer = _dromeFarmer;
         crossDomainMessenger = ICrossDomainMessenger(_bridge);
     } 
 
@@ -74,38 +75,43 @@ contract FarmerMessenger {
     //Helper functions
 
     function sendMessage(bytes memory message) internal {
-        crossDomainMessenger.sendMessage(address(dromeFed), message, gasLimit);
+        crossDomainMessenger.sendMessage(address(dromeFarmer), message, gasLimit);
     }
 
     //Gov Messaging functions
 
     function setMaxGuardianSetableSlippage(uint _maxGuardianSetableSlippageBps) public onlyGov {
         require(_maxGuardianSetableSlippageBps <= 10000, "Max slippage above 100%");
-        sendMessage(abi.encodeWithSignature("setMaxGuardianSetableSlippage(uint)", _maxGuardianSetableSlippageBps));
+        sendMessage(abi.encodeWithSelector(DromeFarmer.setMaxGuardianSetableSlippageBps.selector, _maxGuardianSetableSlippageBps));
+    }
+
+    function setDepegEmergencyThreshold(uint _depegEmergencyThresholdBps) public onlyGov {
+        require(_depegEmergencyThresholdBps <= 10000, "Threshold above 100%");
+        sendMessage(abi.encodeWithSelector(DromeFarmer.setDepegEmergencyThresholdBps.selector, _depegEmergencyThresholdBps));
     }
 
     function setPendingGov(address _pendingGov) public onlyGov {
-        sendMessage(abi.encodeWithSignature("setPendingGov(address)", _pendingGov));
+        sendMessage(abi.encodeWithSelector(DromeFarmer.setPendingGov.selector, _pendingGov));
     }
     
     function claimGov() public onlyGov {
-        sendMessage(abi.encodeWithSignature("claimGov()"));
+        sendMessage(abi.encodeWithSelector(DromeFarmer.claimGov.selector));
     }
     
     function changeTreasury(address _treasury) public onlyGov {
-        sendMessage(abi.encodeWithSignature("changeTreasury(address)", _treasury));
+        sendMessage(abi.encodeWithSelector(DromeFarmer.changeTreasury.selector, _treasury));
     }
     
     function changeChair(address _chair) public onlyGov {
-        sendMessage(abi.encodeWithSignature("changeChair(address)", _chair));
+        sendMessage(abi.encodeWithSelector(DromeFarmer.changeChair.selector, _chair));
     }
     
     function changeGuardian(address _guardian) public onlyGov {
-        sendMessage(abi.encodeWithSignature("changeGuardian(address)", _guardian));
+        sendMessage(abi.encodeWithSelector(DromeFarmer.changeGuardian.selector, _guardian));
     }
     
     function changeL1Fed(address _fed) public onlyGov {
-        sendMessage(abi.encodeWithSignature("changeL1Fed(address)", _fed));
+        sendMessage(abi.encodeWithSelector(DromeFarmer.changeL1Fed.selector, _fed));
     }
 
     //Gov functions
@@ -123,7 +129,7 @@ contract FarmerMessenger {
         pendingGov = address(0);
     }
 
-    function setDromeFed(address dromeFed_) public onlyGov {
-        dromeFed = dromeFed_;
+    function setDromeFarmer(address _dromeFarmer) public onlyGov {
+        dromeFarmer = _dromeFarmer;
     }
 }
