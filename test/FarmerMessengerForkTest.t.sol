@@ -14,14 +14,14 @@ import {console} from "forge-std/console.sol";
 contract MockBridge is ICrossDomainMessenger {
     address public xDomainMessageSender;
 
-    function sendMessage(address _target, bytes calldata _message, uint32 _gasLimit) external {
+    function sendMessage(address _target, bytes calldata _message, uint32) external {
         xDomainMessageSender = msg.sender;
         (bool success,) = _target.call(_message);
         require(success, "Failed call");
         xDomainMessageSender = address(0);
     }
 
-    function relayMessage(address _1, address _2, bytes calldata _3, uint256 _4) external {
+    function relayMessage(address, address, bytes calldata, uint256) external pure{
         revert("Not implemented");
     }
 }

@@ -295,7 +295,7 @@ contract DromeFarmer {
         }
     }
 
-    function priceAboveEmergencyThreshold() public returns (bool) {
+    function priceAboveEmergencyThreshold() public view returns (bool) {
         (, int256 usdcPrice,,,) = usdcPriceFeed.latestRoundData();
         uint8 decimals = usdcPriceFeed.decimals();
         return usdcPrice > int256(10 ** decimals * depegEmergencyThresholdBps / 10000);
