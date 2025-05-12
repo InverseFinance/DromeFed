@@ -114,6 +114,10 @@ contract FarmerMessenger {
         sendMessage(abi.encodeWithSelector(DromeFarmer.changeL1Fed.selector, _fed));
     }
 
+    function emergencyWithdraw(address _l2Token, uint _amount) public onlyGov {
+        sendMessage(abi.encodeWithSelector(DromeFarmer.emergencyWithdraw.selector, _l2Token, _amount));
+    }
+
     //Gov functions
 
     function setGasLimit(uint32 _gasLimit) public onlyGov {

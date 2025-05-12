@@ -28,7 +28,7 @@ contract DromeFarmer {
     address public chair;
     address public pendingGov;
     address public gov;
-    address public treasury;
+    address public TWG;
     address public guardian;
     address public l1Fed;
 
@@ -63,7 +63,7 @@ contract DromeFarmer {
     constructor(
         address _chair,
         address _guardian,
-        address _treasury,
+        address _TWG,
         address _gov,
         address cctpBridge,
         address _l1Fed,
@@ -75,7 +75,7 @@ contract DromeFarmer {
     ){
         gov = _gov;
         chair = _chair;
-        treasury = _treasury;
+        TWG = _TWG;
         guardian = _guardian;
         cctp = ICCTP(cctpBridge);
         l1Fed = _l1Fed;
@@ -114,11 +114,11 @@ contract DromeFarmer {
     }
 
     /**
-     * @notice Claims all VELO token rewards accrued by this contract & transfer all VELO owned by this contract to `treasury`
+     * @notice Claims all VELO token rewards accrued by this contract & transfer all VELO owned by this contract to `TWG`
      */
     function claimRewards() external {
         dolaGauge.getReward(address(this));
-        rewardToken.transfer(treasury, rewardToken.balanceOf(address(this)));
+        rewardToken.transfer(TWG, rewardToken.balanceOf(address(this)));
     }
 
     /**
@@ -366,15 +366,14 @@ contract DromeFarmer {
     }
 
     /**
-     * @notice Withdraws `amount` of `l2Token` to address `to` on L1. Will take 7 days before withdraw is claimable.
+     * @notice Withdraws `amount` of `l2Token` to the TWG address.
+     * @dev Make sure the TWG address is either a trusted multisig or smart contract before calling this function!
      * @param l2Token Address of the L2 token to be withdrawn
      * @param amount Amount of the L2 token to be withdrawn
      */
-    function emergencyWithdrawToL1(address l2Token, uint amount) external onlyL1Role(gov, "gov") {
+    function emergencyWithdraw(address l2Token, uint amount) external onlyL1Role(gov, "gov") {
         if (amount > IERC20(l2Token).balanceOf(address(this))) revert NotEnoughTokens();
-
-        IERC20(l2Token).approve(address(bridge), amount);
-        bridge.withdrawTo(l2Token, treasury, amount, 0, "");
+        IERC20(l2Token).transfer(TWG, amount);
     }
 
     /**
@@ -396,11 +395,11 @@ contract DromeFarmer {
     }
 
     /**
-     * @notice Method for gov to change treasury address, the address that receives all rewards
-     * @param _treasury L2 address to be set as treasury
+     * @notice Method for gov to change TWG address, the address that receives all rewards
+     * @param _TWG L2 address to be set as TWG
      */
-    function changeTreasury(address _treasury) external onlyL1Role(gov, "gov") {
-        treasury = _treasury;
+    function changeTreasury(address _TWG) external onlyL1Role(gov, "gov") {
+        TWG = _TWG;
     }
 
     /**

@@ -7,7 +7,7 @@ import {IDola} from "src/interfaces/IDola.sol";
 import "src/interfaces/ICrossDomainMessenger.sol";
 import "src/interfaces/IRouter.sol";
 import "src/interfaces/IGauge.sol";
-import {DromeFarmer} from "src/DromeFarmer.sol";
+import {DromeFarmer, IChainlinkPriceFeed} from "src/DromeFarmer.sol";
 import {console} from "forge-std/console.sol";
 
 contract DromeFarmerForkTest is Test {
@@ -22,7 +22,7 @@ contract DromeFarmerForkTest is Test {
     address public l1Fed = address(0xA);
     ICrossDomainMessenger public l2CrossDomainMessenger = ICrossDomainMessenger(0x4200000000000000000000000000000000000007);
     address public l1CrossDomainMessenger = 0x36BDE71C97B33Cc4729cf772aE268934f7AB70B2;
-    address public treasury = 0x586CF50c2874f3e3997660c0FD0996B090FB9764;
+    address public TWG = 0x586CF50c2874f3e3997660c0FD0996B090FB9764;
     address public cctpBridge = 0x1682Ae6375C4E4A97e4B583BC394c861A46D8962;
 
     //EOAs
@@ -41,6 +41,7 @@ contract DromeFarmerForkTest is Test {
     error OnlyRole(address l1, string name);
     error OnlyL1Role(address l1, string name);
     error PercentOutOfRange();
+    error MaxSlippageTooHigh();
     error LiquiditySlippageTooHigh();
     
     function setUp() public {
@@ -53,7 +54,7 @@ contract DromeFarmerForkTest is Test {
         dromeFarmer = new DromeFarmer(
             chair,
             guardian,
-            treasury,
+            TWG,
             gov,
             cctpBridge,
             l1Fed,
@@ -104,7 +105,7 @@ contract DromeFarmerForkTest is Test {
         deal(address(DOLA), address(dromeFarmer), dolaAmount * 3);
         deal(address(nUSDC), address(dromeFarmer), USDCAmount * 3);
 
-        uint initialRewards = rewardToken.balanceOf(address(treasury));
+        uint initialRewards = rewardToken.balanceOf(address(TWG));
 
         vm.prank(guardian);
         dromeFarmer.setMaxSlippageLP(1000);
@@ -117,14 +118,14 @@ contract DromeFarmerForkTest is Test {
         dromeFarmer.claimRewards();
 
         assertEq(dromeFarmer.lpToken().balanceOf(address(dromeFarmer)),0);
-        assertGt(rewardToken.balanceOf(address(treasury)), initialRewards, "No rewards claimed");
+        assertGt(rewardToken.balanceOf(address(TWG)), initialRewards, "No rewards claimed");
     }
 
     function test_depositAll() public {
         deal(address(DOLA), address(dromeFarmer), dolaAmount * 3);
         deal(address(nUSDC), address(dromeFarmer), USDCAmount * 3);
 
-        uint initialRewards = rewardToken.balanceOf(address(treasury));
+        uint initialRewards = rewardToken.balanceOf(address(TWG));
 
         vm.prank(guardian);
         dromeFarmer.setMaxSlippageLP(1000);
@@ -137,7 +138,7 @@ contract DromeFarmerForkTest is Test {
         dromeFarmer.claimRewards();
 
         assertEq(dromeFarmer.lpToken().balanceOf(address(dromeFarmer)),0);
-        assertGt(rewardToken.balanceOf(address(treasury)), initialRewards, "No rewards claimed");
+        assertGt(rewardToken.balanceOf(address(TWG)), initialRewards, "No rewards claimed");
     }
 
     function test_withdrawNative() public {
@@ -183,11 +184,11 @@ contract DromeFarmerForkTest is Test {
         dromeFarmer.withdrawToL1FedNative(nUSDC.balanceOf(address(dromeFarmer)));
     }
 
-    function test_emergencyWithdrawToL1() public {
+    function test_emergencyWithdraw() public {
         deal(address(DOLA), address(dromeFarmer), 1000e6);
         vm.startPrank(address(l2CrossDomainMessenger));
         mockXDomainMessageSender(gov);
-        dromeFarmer.emergencyWithdrawToL1(address(DOLA), 1000e6);
+        dromeFarmer.emergencyWithdraw(address(DOLA), 1000e6);
     }
 
     function test_withdrawToL1Fed() public {
@@ -207,7 +208,7 @@ contract DromeFarmerForkTest is Test {
     function test_DepositAndClaimRewards() public {
         deal(address(DOLA), address(dromeFarmer), dolaAmount * 3);
         deal(address(nUSDC), address(dromeFarmer), USDCAmount * 3);
-        uint initialRewards = rewardToken.balanceOf(address(treasury));
+        uint initialRewards = rewardToken.balanceOf(address(TWG));
 
         vm.prank(guardian);
         dromeFarmer.setMaxSlippageLP(1000);
@@ -219,14 +220,14 @@ contract DromeFarmerForkTest is Test {
         vm.warp(block.timestamp + (10_0000 * 60));
         dromeFarmer.claimRewards();
 
-        assertGt(rewardToken.balanceOf(address(treasury)), initialRewards, "No rewards claimed");
+        assertGt(rewardToken.balanceOf(address(TWG)), initialRewards, "No rewards claimed");
     }
 
     function test_SwapAndClaimRewards() public {
         deal(address(DOLA), address(dromeFarmer), dolaAmount * 3);
         deal(address(nUSDC), address(dromeFarmer), USDCAmount * 3);
 
-        uint initialRewards = rewardToken.balanceOf(address(treasury));
+        uint initialRewards = rewardToken.balanceOf(address(TWG));
 
         vm.prank(guardian);
         dromeFarmer.setMaxSlippageLP(1000);
@@ -237,7 +238,7 @@ contract DromeFarmerForkTest is Test {
         vm.warp(block.timestamp + (10_000 * 60));
         dromeFarmer.claimRewards();
 
-        assertGt(rewardToken.balanceOf(address(treasury)), initialRewards, "No rewards claimed");
+        assertGt(rewardToken.balanceOf(address(TWG)), initialRewards, "No rewards claimed");
     }
 
     function test_swap_USDCNativeToUSDC() public {
@@ -399,6 +400,12 @@ contract DromeFarmerForkTest is Test {
         );
         dromeFarmer.resign();
     }
+    
+    function test_priceAboveEmergencyThreshold() public {
+        assertEq(dromeFarmer.priceAboveEmergencyThreshold(), true, "Price below emergency threshold");
+        mockUsdcPrice(0.5 * 1e8);
+        assertEq(dromeFarmer.priceAboveEmergencyThreshold(), false, "Price above emergency threshold");
+    }
 
     function test_setMaxSwapSlippage_fail_whenCalledByNonGov() public {
         vm.startPrank(user);
@@ -409,6 +416,23 @@ contract DromeFarmerForkTest is Test {
         dromeFarmer.setMaxSwapSlippage(address(DOLA), address(USDC), 500);
     }
 
+    function test_setMaxSwapSlippage_fail_whenSetAboveLimit() public {
+        vm.startPrank(guardian);
+
+        uint maxSlippage = dromeFarmer.maxGuardianSetableSlippageBps();
+        vm.expectRevert(
+            abi.encodeWithSelector(MaxSlippageTooHigh.selector)
+        );
+        dromeFarmer.setMaxSwapSlippage(address(DOLA), address(USDC), maxSlippage + 1);
+    }
+
+    function test_setMaxSwapSlippage_whenSetAboveLimitAndDepegged() public {
+        vm.startPrank(guardian);
+        
+        mockUsdcPrice(0.5 * 1e8);
+        dromeFarmer.setMaxSwapSlippage(address(DOLA), address(USDC), 9999);
+    }
+
     function test_setMaxSlippageLP_fail_whenCalledByNonGov() public {  
         vm.startPrank(user);
 
@@ -417,6 +441,24 @@ contract DromeFarmerForkTest is Test {
         );
         dromeFarmer.setMaxSlippageLP(500);
     }
+
+    function test_setMaxSlippageLP_fail_whenSetAboveLimit() public {
+        vm.startPrank(guardian);
+
+        uint maxSlippage = dromeFarmer.maxGuardianSetableSlippageBps();
+        vm.expectRevert(
+            abi.encodeWithSelector(MaxSlippageTooHigh.selector)
+        );
+        dromeFarmer.setMaxSlippageLP(maxSlippage + 1);
+    }
+
+    function test_setMaxSlippageLP_whenSetAboveLimitAndDepegged() public {
+        vm.startPrank(guardian);
+        
+        mockUsdcPrice(0.5 * 1e8);
+        dromeFarmer.setMaxSlippageLP(9999);
+    }
+
 
     function test_setPendingGov_fail_whenCalledByNonGov() public {
         vm.startPrank(user);
@@ -486,14 +528,14 @@ contract DromeFarmerForkTest is Test {
         );
         dromeFarmer.changeTreasury(user);
 
-        assertNotEq(dromeFarmer.treasury(), user);
+        assertNotEq(dromeFarmer.TWG(), user);
 
         vm.startPrank(address(l2CrossDomainMessenger));
         mockXDomainMessageSender(gov);
         dromeFarmer.changeTreasury(user);
         vm.stopPrank();
 
-        assertEq(dromeFarmer.treasury(), user);
+        assertEq(dromeFarmer.TWG(), user);
     }
 
     function test_changeGuardian() public {
@@ -512,6 +554,16 @@ contract DromeFarmerForkTest is Test {
         vm.stopPrank();
 
         assertEq(dromeFarmer.guardian(), user);
+    }
+
+    function mockUsdcPrice(uint price) internal {
+        (uint80 roundId,, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) = dromeFarmer.usdcPriceFeed().latestRoundData();
+        vm.mockCall(
+            address(dromeFarmer.usdcPriceFeed()),
+            abi.encodeWithSelector(IChainlinkPriceFeed.latestRoundData.selector),
+            abi.encode(roundId, int256(price), startedAt, updatedAt, answeredInRound)
+        );
+
     }
 
     //My loyal helpers

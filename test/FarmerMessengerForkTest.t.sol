@@ -38,7 +38,7 @@ contract FarmerMessengerForkTest is Test {
     address public l1Fed = address(0xA);
     ICrossDomainMessenger public l2CrossDomainMessenger = ICrossDomainMessenger(0x4200000000000000000000000000000000000007);
     address public l1CrossDomainMessenger = 0x36BDE71C97B33Cc4729cf772aE268934f7AB70B2;
-    address public treasury = 0x586CF50c2874f3e3997660c0FD0996B090FB9764;
+    address public TWG = 0x586CF50c2874f3e3997660c0FD0996B090FB9764;
     address public cctpBridge = 0x1682Ae6375C4E4A97e4B583BC394c861A46D8962;
 
     //EOAs
@@ -72,7 +72,7 @@ contract FarmerMessengerForkTest is Test {
         dromeFarmer = new DromeFarmer(
             chair,
             guardian,
-            treasury,
+            TWG,
             address(farmerMessenger),
             cctpBridge,
             l1Fed,
@@ -88,6 +88,8 @@ contract FarmerMessengerForkTest is Test {
         rewardToken = dromeFarmer.rewardToken();
 
         address voter = dolaGauge.voter();
+        deal(address(DOLA), address(dromeFarmer), dolaAmount);
+        deal(address(nUSDC), address(dromeFarmer), USDCAmount);
         deal(address(rewardToken), address(voter), 1000 ether);
         deal(address(nUSDC), address(0xe8bDbCBC269528daE5bB9E8Fa5917a98FB9191e7), 1000 ether);
         vm.startPrank(voter);
@@ -131,7 +133,7 @@ contract FarmerMessengerForkTest is Test {
         farmerMessenger.changeTreasury(user);
         vm.prank(gov);
         farmerMessenger.changeTreasury(user);
-        assertEq(dromeFarmer.treasury(), user);
+        assertEq(dromeFarmer.TWG(), user);
     }
     
     function testChangeChair() public {
@@ -159,7 +161,14 @@ contract FarmerMessengerForkTest is Test {
     }
 
     function testEmergencyWithdrawToL1() public {
-        revert("Not implemented");
+        vm.expectRevert();
+        farmerMessenger.emergencyWithdraw(address(DOLA), dolaAmount);
+        uint dolaBefore = DOLA.balanceOf(address(dromeFarmer));
+        uint dolaTWGBefore = DOLA.balanceOf(address(TWG));
+        vm.prank(gov);
+        farmerMessenger.emergencyWithdraw(address(DOLA), dolaAmount);
+        assertEq(DOLA.balanceOf(address(dromeFarmer)), dolaBefore - dolaAmount, "Did not withdraw dolaAmount");
+        assertEq(DOLA.balanceOf(address(TWG)), dolaTWGBefore + dolaAmount, "Did not receive dolaAmount");
     }
 
     function testSetDepegEmergencyThreshold() public {
