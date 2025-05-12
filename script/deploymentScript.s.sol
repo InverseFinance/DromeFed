@@ -8,10 +8,10 @@ contract DeployDromeFarmer is Script {
     function run() external {
         // Load private key from environment variable
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        
+
         // Start broadcasting transactions
         vm.startBroadcast(deployerPrivateKey);
-        
+
         // Contract addresses - replace with actual addresses for your target network
         address chair = 0x7FD13dD8d653F32Bd5E2B6bAbb4978507960A0dA;
         address guardian = 0x09aF9E0D4932604913F7Cd77aD5e157F0BC700eA;
@@ -24,26 +24,15 @@ contract DeployDromeFarmer is Script {
         address nusdc = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
         address router = 0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43;
         address dolaGauge = 0xCCff5627cd544b4cBb7d048139C1A6b6Bde67885;
-        
-        
+
         // Deploy DromeFarmer contract
         DromeFarmer dromeFarmer = new DromeFarmer(
-            chair,
-            guardian,
-            treasury,
-            gov,
-            cctpBridge,
-            l1Fed,
-            dola,
-            usdc,
-            nusdc,
-            IRouter(router),
-            IGauge(dolaGauge)
+            chair, guardian, treasury, gov, cctpBridge, l1Fed, dola, usdc, nusdc, IRouter(router), IGauge(dolaGauge)
         );
-        
+
         // Log the deployed contract address
         console.log("DromeFarmer deployed at:", address(dromeFarmer));
-        
+
         // Stop broadcasting transactions
         vm.stopBroadcast();
     }

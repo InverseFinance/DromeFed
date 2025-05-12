@@ -11,9 +11,9 @@ import {DromeFarmer} from "src/DromeFarmer.sol";
 import {FarmerMessenger} from "src/FarmerMessenger.sol";
 import {console} from "forge-std/console.sol";
 
-contract MockBridge is ICrossDomainMessenger{
+contract MockBridge is ICrossDomainMessenger {
     address public xDomainMessageSender;
-    
+
     function sendMessage(address _target, bytes calldata _message, uint32 _gasLimit) external {
         xDomainMessageSender = msg.sender;
         (bool success,) = _target.call(_message);
@@ -21,7 +21,7 @@ contract MockBridge is ICrossDomainMessenger{
         xDomainMessageSender = address(0);
     }
 
-    function relayMessage(address _1, address _2, bytes calldata _3, uint _4) external {
+    function relayMessage(address _1, address _2, bytes calldata _3, uint256 _4) external {
         revert("Not implemented");
     }
 }
@@ -29,14 +29,15 @@ contract MockBridge is ICrossDomainMessenger{
 contract FarmerMessengerForkTest is Test {
     IRouter public router = IRouter(payable(0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43));
     IGauge public dolaGauge = IGauge(0xCCff5627cd544b4cBb7d048139C1A6b6Bde67885);
-  
+
     IDola public DOLA = IDola(0x4621b7A9c75199271F773Ebd9A499dbd165c3191);
     IERC20 public USDC = IERC20(0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA);
     IERC20 public nUSDC = IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
     IERC20 public rewardToken;
     address public l2optiBridgeAddress = 0x4200000000000000000000000000000000000010;
     address public l1Fed = address(0xA);
-    ICrossDomainMessenger public l2CrossDomainMessenger = ICrossDomainMessenger(0x4200000000000000000000000000000000000007);
+    ICrossDomainMessenger public l2CrossDomainMessenger =
+        ICrossDomainMessenger(0x4200000000000000000000000000000000000007);
     address public l1CrossDomainMessenger = 0x36BDE71C97B33Cc4729cf772aE268934f7AB70B2;
     address public TWG = 0x586CF50c2874f3e3997660c0FD0996B090FB9764;
     address public cctpBridge = 0x1682Ae6375C4E4A97e4B583BC394c861A46D8962;
@@ -48,8 +49,8 @@ contract FarmerMessengerForkTest is Test {
     address guardian = address(0xD);
 
     //Numbas
-    uint dolaAmount = 1_000e18;
-    uint USDCAmount = 1_000e6;
+    uint256 dolaAmount = 1_000e18;
+    uint256 USDCAmount = 1_000e6;
 
     //Feds
     DromeFarmer dromeFarmer;
@@ -59,7 +60,7 @@ contract FarmerMessengerForkTest is Test {
     error OnlyL1Role(address l1, string name);
     error PercentOutOfRange();
     error LiquiditySlippageTooHigh();
-    
+
     function setUp() public {
         vm.createSelectFork(vm.rpcUrl("base"), 24873489);
         vm.label(address(rewardToken), "rewardToken");
@@ -112,9 +113,8 @@ contract FarmerMessengerForkTest is Test {
         vm.prank(gov);
         farmerMessenger.setMaxGuardianSetableSlippage(1);
         assertEq(dromeFarmer.maxGuardianSetableSlippageBps(), 1);
-
     }
-    
+
     function testClaimGov() public {
         FarmerMessenger newMessenger = new FarmerMessenger(gov, address(dromeFarmer), address(l2CrossDomainMessenger));
         vm.prank(gov);
@@ -127,7 +127,7 @@ contract FarmerMessengerForkTest is Test {
         newMessenger.claimGov();
         assertEq(dromeFarmer.gov(), address(newMessenger));
     }
-    
+
     function testChangeTreasury() public {
         vm.expectRevert();
         farmerMessenger.changeTreasury(user);
@@ -135,7 +135,7 @@ contract FarmerMessengerForkTest is Test {
         farmerMessenger.changeTreasury(user);
         assertEq(dromeFarmer.TWG(), user);
     }
-    
+
     function testChangeChair() public {
         vm.expectRevert();
         farmerMessenger.changeChair(user);
@@ -143,7 +143,7 @@ contract FarmerMessengerForkTest is Test {
         farmerMessenger.changeChair(user);
         assertEq(dromeFarmer.chair(), user);
     }
-    
+
     function testChangeGuardian() public {
         vm.expectRevert();
         farmerMessenger.changeGuardian(user);
@@ -151,7 +151,7 @@ contract FarmerMessengerForkTest is Test {
         farmerMessenger.changeGuardian(user);
         assertEq(dromeFarmer.guardian(), user);
     }
-    
+
     function testChangeL1Fed() public {
         vm.expectRevert();
         farmerMessenger.changeL1Fed(user);
@@ -163,8 +163,8 @@ contract FarmerMessengerForkTest is Test {
     function testEmergencyWithdrawToL1() public {
         vm.expectRevert();
         farmerMessenger.emergencyWithdraw(address(DOLA), dolaAmount);
-        uint dolaBefore = DOLA.balanceOf(address(dromeFarmer));
-        uint dolaTWGBefore = DOLA.balanceOf(address(TWG));
+        uint256 dolaBefore = DOLA.balanceOf(address(dromeFarmer));
+        uint256 dolaTWGBefore = DOLA.balanceOf(address(TWG));
         vm.prank(gov);
         farmerMessenger.emergencyWithdraw(address(DOLA), dolaAmount);
         assertEq(DOLA.balanceOf(address(dromeFarmer)), dolaBefore - dolaAmount, "Did not withdraw dolaAmount");
@@ -217,7 +217,6 @@ contract FarmerMessengerForkTest is Test {
         assertEq(farmerMessenger.dromeFarmer(), user);
     }
 
-
     //My loyal helpers
     function mockXDomainMessageSender(address sender) internal {
         vm.mockCall(
@@ -227,7 +226,7 @@ contract FarmerMessengerForkTest is Test {
         );
     }
 
-    function getRoute(address from, address to) internal pure returns(IRouter.Route[] memory){
+    function getRoute(address from, address to) internal pure returns (IRouter.Route[] memory) {
         address factory = address(0); //Default factory
         IRouter.Route memory route = IRouter.Route(from, to, true, factory);
         IRouter.Route[] memory routeArray = new IRouter.Route[](1);

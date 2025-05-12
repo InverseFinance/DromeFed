@@ -7,21 +7,17 @@ import {ICrossDomainMessenger} from "src/interfaces/ICrossDomainMessenger.sol";
 import {ICCTP} from "src/interfaces/ICCTP.sol";
 
 pragma solidity ^0.8.13;
+
 interface IPool is IERC20 {
-    function getReserves() external view returns(uint, uint, uint);
+    function getReserves() external view returns (uint256, uint256, uint256);
 }
+
 interface IChainlinkPriceFeed {
     function latestRoundData()
         external
         view
-        returns (
-          uint80 roundId,
-          int256 answer,
-          uint256 startedAt,
-          uint256 updatedAt,
-          uint80 answeredInRound
-        );
-    function decimals() external view returns(uint8);
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);
+    function decimals() external view returns (uint8);
 }
 
 contract DromeFarmer {
@@ -32,21 +28,22 @@ contract DromeFarmer {
     address public guardian;
     address public l1Fed;
 
-    mapping(address => mapping(address => uint)) public maxSwapSlippage;
+    mapping(address => mapping(address => uint256)) public maxSwapSlippage;
     mapping(address => bool) public allowedSwaps;
-    uint public maxSlippageBps;
-    uint public maxGuardianSetableSlippageBps = 500;
-    uint public depegEmergencyThresholdBps = 9800; //If USDC depegs by more than 2%, guardian msig can set emergency slippage parameters
+    uint256 public maxSlippageBps;
+    uint256 public maxGuardianSetableSlippageBps = 500;
+    uint256 public depegEmergencyThresholdBps = 9800; //If USDC depegs by more than 2%, guardian msig can set emergency slippage parameters
 
-    uint public constant DOLA_USDC_CONVERSION_MULTI= 1e12;
-    ICrossDomainMessenger public constant ovmL2CrossDomainMessenger = ICrossDomainMessenger(0x4200000000000000000000000000000000000007);
+    uint256 public constant DOLA_USDC_CONVERSION_MULTI = 1e12;
+    ICrossDomainMessenger public constant ovmL2CrossDomainMessenger =
+        ICrossDomainMessenger(0x4200000000000000000000000000000000000007);
     IL2ERC20Bridge public constant bridge = IL2ERC20Bridge(0x4200000000000000000000000000000000000010);
     IChainlinkPriceFeed public constant usdcPriceFeed = IChainlinkPriceFeed(0x7e860098F58bBFC8648a4311b374B1D669a2bc6B);
 
-    IGauge public immutable dolaGauge;// = IGauge(0xCCff5627cd544b4cBb7d048139C1A6b6Bde67885); 
+    IGauge public immutable dolaGauge; // = IGauge(0xCCff5627cd544b4cBb7d048139C1A6b6Bde67885);
     IPool public immutable lpToken;
     IERC20 public immutable rewardToken;
-    IRouter public immutable router;// = IRouter(0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43);
+    IRouter public immutable router; // = IRouter(0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43);
     IERC20 public immutable DOLA;
     IERC20 public immutable nUSDC;
     IERC20 public immutable USDC;
@@ -72,7 +69,7 @@ contract DromeFarmer {
         address _nusdc,
         IRouter _router,
         IGauge _dolaGauge
-    ){
+    ) {
         gov = _gov;
         chair = _chair;
         TWG = _TWG;
@@ -105,11 +102,13 @@ contract DromeFarmer {
     }
 
     modifier onlyL1Role(address role, string memory description) {
-        if (msg.sender != address(ovmL2CrossDomainMessenger))
+        if (msg.sender != address(ovmL2CrossDomainMessenger)) {
             revert OnlyL1Role(role, description);
+        }
         address messageSender = ovmL2CrossDomainMessenger.xDomainMessageSender();
-        if(messageSender != role)
+        if (messageSender != role) {
             revert OnlyL1Role(role, description);
+        }
         _;
     }
 
@@ -126,20 +125,22 @@ contract DromeFarmer {
      * @param dolaAmount Amount of DOLA to be added as liquidity in Aerodrome DOLA/USDC pool
      * @param usdcAmount Amount of USDC to be added as liquidity in Aerodrome DOLA/USDC pool
      */
-    function _deposit(uint dolaAmount, uint usdcAmount) internal {
-        uint lpTokenPrice = getLpTokenPrice();
+    function _deposit(uint256 dolaAmount, uint256 usdcAmount) internal {
+        uint256 lpTokenPrice = getLpTokenPrice();
 
         DOLA.approve(address(router), dolaAmount);
         nUSDC.approve(address(router), usdcAmount);
-        (uint dolaSpent, uint usdcSpent, uint lpTokensReceived) = router.addLiquidity(address(DOLA), address(nUSDC), true, dolaAmount, usdcAmount, 0, 0, address(this), block.timestamp);
+        (uint256 dolaSpent, uint256 usdcSpent, uint256 lpTokensReceived) = router.addLiquidity(
+            address(DOLA), address(nUSDC), true, dolaAmount, usdcAmount, 0, 0, address(this), block.timestamp
+        );
         require(lpTokensReceived > 0, "No LP tokens received");
 
-        uint totalDolaValue = usdcSpent * DOLA_USDC_CONVERSION_MULTI + dolaSpent;
+        uint256 totalDolaValue = usdcSpent * DOLA_USDC_CONVERSION_MULTI + dolaSpent;
 
-        uint expectedLpTokens = applySlippage(totalDolaValue * 1e18 / lpTokenPrice, maxSlippageBps);
+        uint256 expectedLpTokens = applySlippage(totalDolaValue * 1e18 / lpTokenPrice, maxSlippageBps);
         if (lpTokensReceived < expectedLpTokens) revert SlippageTooHigh();
-        
-        uint lpBalance = lpToken.balanceOf(address(this));
+
+        uint256 lpBalance = lpToken.balanceOf(address(this));
         lpToken.approve(address(dolaGauge), lpBalance);
         dolaGauge.deposit(lpBalance);
     }
@@ -149,7 +150,7 @@ contract DromeFarmer {
      * @param dolaAmount Amount of DOLA to be added as liquidity in Aerodrome DOLA/USDC pool
      * @param usdcAmount Amount of USDC to be added as liquidity in Aerodrome DOLA/USDC pool
      */
-    function deposit(uint dolaAmount, uint usdcAmount) external onlyRole(chair, "chair") {
+    function deposit(uint256 dolaAmount, uint256 usdcAmount) external onlyRole(chair, "chair") {
         _deposit(dolaAmount, usdcAmount);
     }
 
@@ -166,18 +167,20 @@ contract DromeFarmer {
      * @param dolaAmount Desired dola value to remove from DOLA/USDC pool. Will attempt to remove 50/50 while allowing for `maxSlippageBps` bps of variance.
      * @return Amount of USDC received from liquidity removal. Used by withdrawAndSwap wrapper.
      */
-    function _withdraw(uint dolaAmount) internal returns (uint) {
-        uint lpTokenPrice = getLpTokenPrice();
-        uint liquidityToWithdraw = dolaAmount * 1e18 / lpTokenPrice;
-        uint owned = dolaGauge.balanceOf(address(this));
+    function _withdraw(uint256 dolaAmount) internal returns (uint256) {
+        uint256 lpTokenPrice = getLpTokenPrice();
+        uint256 liquidityToWithdraw = dolaAmount * 1e18 / lpTokenPrice;
+        uint256 owned = dolaGauge.balanceOf(address(this));
 
         if (liquidityToWithdraw > owned) liquidityToWithdraw = owned;
         dolaGauge.withdraw(liquidityToWithdraw);
-   
-        lpToken.approve(address(router), liquidityToWithdraw);
-        (uint amountUSDC, uint amountDola) = router.removeLiquidity(address(nUSDC), address(DOLA), true, liquidityToWithdraw, 0, 0, address(this), block.timestamp);
 
-        uint totalDolaReceived = amountDola + (amountUSDC *DOLA_USDC_CONVERSION_MULTI);
+        lpToken.approve(address(router), liquidityToWithdraw);
+        (uint256 amountUSDC, uint256 amountDola) = router.removeLiquidity(
+            address(nUSDC), address(DOLA), true, liquidityToWithdraw, 0, 0, address(this), block.timestamp
+        );
+
+        uint256 totalDolaReceived = amountDola + (amountUSDC * DOLA_USDC_CONVERSION_MULTI);
 
         if (applySlippage(dolaAmount, maxSlippageBps) > totalDolaReceived) {
             revert SlippageTooHigh();
@@ -192,23 +195,24 @@ contract DromeFarmer {
      * @param dolaAmount Desired dola value to remove from DOLA/USDC pool. Will attempt to remove 50/50 while allowing for `maxSlippageBps` bps of variance.
      * @return Amount of USDC received from liquidity removal. Used by withdrawAndSwap wrapper.
      */
-    function withdraw(uint dolaAmount) external onlyRole(chair, "chair") returns (uint) {
+    function withdraw(uint256 dolaAmount) external onlyRole(chair, "chair") returns (uint256) {
         return _withdraw(dolaAmount);
     }
- 
+
     /**
      * @notice Withdraws `dolaAmount` worth of LP tokens from gauge. Then, redeems LP tokens for DOLA/USDC and swaps redeemed USDC to DOLA.
      * @param dolaAmount Desired dola value to remove from DOLA/USDC pool. Will attempt to remove 50/50 while allowing for `maxSlippageBps` bps of variance.
      */
-    function withdrawAndSwapToDOLA(address sellStable, uint dolaAmount) external onlyRole(chair, "chair") {
-        uint usdcAmount = _withdraw(dolaAmount);
+    function withdrawAndSwapToDOLA(address sellStable, uint256 dolaAmount) external onlyRole(chair, "chair") {
+        uint256 usdcAmount = _withdraw(dolaAmount);
         swapStables(sellStable, address(DOLA), usdcAmount);
     }
     /**
      * @notice Withdraws `dolaAmount` of DOLA to l1Fed on L1. Will take 7 days before withdraw is claimable on L1.
      * @param dolaAmount Amount of DOLA to withdraw and send to L1 Fed
      */
-    function withdrawToL1Fed(uint dolaAmount) external onlyRole(chair, "chair") {
+
+    function withdrawToL1Fed(uint256 dolaAmount) external onlyRole(chair, "chair") {
         if (dolaAmount > DOLA.balanceOf(address(this))) revert NotEnoughTokens();
 
         bridge.withdrawTo(address(DOLA), l1Fed, dolaAmount, 0, "");
@@ -219,7 +223,7 @@ contract DromeFarmer {
      * @param dolaAmount Amount of DOLA to withdraw and send to L1 Fed
      * @param usdcAmount Amount of USDC to withdraw and send to L1 Fed
      */
-    function withdrawToL1FedNative(uint dolaAmount, uint usdcAmount) external onlyRole(chair, "chair") {
+    function withdrawToL1FedNative(uint256 dolaAmount, uint256 usdcAmount) external onlyRole(chair, "chair") {
         if (dolaAmount > DOLA.balanceOf(address(this))) revert NotEnoughTokens();
         if (usdcAmount > nUSDC.balanceOf(address(this))) revert NotEnoughTokens();
 
@@ -228,9 +232,9 @@ contract DromeFarmer {
         cctp.depositForBurn(usdcAmount, 0, bytes32(uint256(uint160(l1Fed))), address(nUSDC));
     }
 
-    function withdrawToL1FedNative(uint usdcAmount) external onlyRole(chair, "chair") {
+    function withdrawToL1FedNative(uint256 usdcAmount) external onlyRole(chair, "chair") {
         if (usdcAmount > nUSDC.balanceOf(address(this))) revert NotEnoughTokens();
-        
+
         nUSDC.approve(address(cctp), usdcAmount);
         cctp.depositForBurn(usdcAmount, 0, bytes32(uint256(uint160(l1Fed))), address(nUSDC));
     }
@@ -239,7 +243,7 @@ contract DromeFarmer {
      * @notice Withdraws `usdcAmount` of USDC to l1Fed on L1. Will take 7 days before withdraw is claimable.
      * @param usdcAmount Amount of USDC to withdraw and send to L1 Fed
      */
-    function withdrawToL1FedBridged(uint usdcAmount) external onlyRole(chair, "chair") {
+    function withdrawToL1FedBridged(uint256 usdcAmount) external onlyRole(chair, "chair") {
         if (usdcAmount > USDC.balanceOf(address(this))) revert NotEnoughTokens();
 
         bridge.withdrawTo(address(USDC), l1Fed, usdcAmount, 0, "");
@@ -250,61 +254,65 @@ contract DromeFarmer {
      * @param buyStable Gov approved stable to buy
      * @param amount Amount of sellStable to swap for buyStable
      */
-    function swapStables(address sellStable, address buyStable, uint amount) public onlyRole(chair, "chair") {
+
+    function swapStables(address sellStable, address buyStable, uint256 amount) public onlyRole(chair, "chair") {
         require(sellStable != buyStable, "same stable");
         require(allowedSwaps[sellStable], "sellStable not allowed");
         require(allowedSwaps[buyStable], "buyStable not allowed");
-        uint minOut = applySwapSlippage(amount, sellStable, buyStable);
+        uint256 minOut = applySwapSlippage(amount, sellStable, buyStable);
 
         IERC20(sellStable).approve(address(router), amount);
         router.swapExactTokensForTokens(amount, minOut, getRoute(sellStable, buyStable), address(this), block.timestamp);
     }
 
-    function getLpTokenPrice() internal view returns (uint) {
-       (uint256 reservesDOLA, uint256 reservesNUSDC, ) = lpToken.getReserves();
-       uint256 k = _k(reservesDOLA, reservesNUSDC, 10**DOLA.decimals(), 10**nUSDC.decimals());
-       return 2 * sqrt(sqrt(k/2)) * 1e18 / lpToken.totalSupply();
+    function getLpTokenPrice() internal view returns (uint256) {
+        (uint256 reservesDOLA, uint256 reservesNUSDC,) = lpToken.getReserves();
+        uint256 k = _k(reservesDOLA, reservesNUSDC, 10 ** DOLA.decimals(), 10 ** nUSDC.decimals());
+        return 2 * sqrt(sqrt(k / 2)) * 1e18 / lpToken.totalSupply();
     }
 
     // from Velodrome pool
     function _k(uint256 x, uint256 y, uint256 decimals0, uint256 decimals1) internal pure returns (uint256) {
-       uint256 _x = (x * 1e18) / decimals0;
-       uint256 _y = (y * 1e18) / decimals1;
-       uint256 _a = (_x * _y) / 1e18;
-       uint256 _b = ((_x * _x) / 1e18 + (_y * _y) / 1e18);
-       return (_a * _b) / 1e18;
+        uint256 _x = (x * 1e18) / decimals0;
+        uint256 _y = (y * 1e18) / decimals1;
+        uint256 _a = (_x * _y) / 1e18;
+        uint256 _b = ((_x * _x) / 1e18 + (_y * _y) / 1e18);
+        return (_a * _b) / 1e18;
     }
 
     //from UniV2 Math.sol, adapted for 18 decimals precision numbers
-    function sqrt(uint y) internal pure returns (uint z) {
-       y *= 1e18;
-       if (y > 3) {
-          z = y;
-          uint x = y / 2 + 1;
-          while (x < z) {
+    function sqrt(uint256 y) internal pure returns (uint256 z) {
+        y *= 1e18;
+        if (y > 3) {
+            z = y;
+            uint256 x = y / 2 + 1;
+            while (x < z) {
                 z = x;
                 x = (y / x + x) / 2;
-          }
-       } else if (y != 0) {
-          z = 1;
-       }
+            }
+        } else if (y != 0) {
+            z = 1;
+        }
     }
 
-    function priceAboveEmergencyThreshold() public returns(bool) {
-        (,int usdcPrice,,,) = usdcPriceFeed.latestRoundData();
+    function priceAboveEmergencyThreshold() public returns (bool) {
+        (, int256 usdcPrice,,,) = usdcPriceFeed.latestRoundData();
         uint8 decimals = usdcPriceFeed.decimals();
-        return usdcPrice > int(10 ** decimals * depegEmergencyThresholdBps / 10000);
+        return usdcPrice > int256(10 ** decimals * depegEmergencyThresholdBps / 10000);
     }
 
-    function applySwapSlippage(uint amount, address sellStable, address buyStable) internal view returns(uint) {
-        uint sellStableDecimals = IERC20(sellStable).decimals();
-        uint buyStableDecimals = IERC20(buyStable).decimals();
-        if(sellStableDecimals > buyStableDecimals)
-            return applySlippage(amount, maxSwapSlippage[sellStable][buyStable]) / (10 ** (sellStableDecimals - buyStableDecimals));
-        return applySlippage(amount, maxSwapSlippage[sellStable][buyStable]) * (10 ** (buyStableDecimals - sellStableDecimals));
+    function applySwapSlippage(uint256 amount, address sellStable, address buyStable) internal view returns (uint256) {
+        uint256 sellStableDecimals = IERC20(sellStable).decimals();
+        uint256 buyStableDecimals = IERC20(buyStable).decimals();
+        if (sellStableDecimals > buyStableDecimals) {
+            return applySlippage(amount, maxSwapSlippage[sellStable][buyStable])
+                / (10 ** (sellStableDecimals - buyStableDecimals));
+        }
+        return applySlippage(amount, maxSwapSlippage[sellStable][buyStable])
+            * (10 ** (buyStableDecimals - sellStableDecimals));
     }
 
-    function applySlippage(uint amount, uint maxSlippage) internal pure returns(uint) {
+    function applySlippage(uint256 amount, uint256 maxSlippage) internal pure returns (uint256) {
         return amount * (10000 - maxSlippage) / 10000;
     }
 
@@ -314,7 +322,7 @@ contract DromeFarmer {
      * @param to Token to go to
      * @return Returns a Route[] with a single element, representing the route
      */
-    function getRoute(address from, address to) internal view returns(IRouter.Route[] memory){
+    function getRoute(address from, address to) internal view returns (IRouter.Route[] memory) {
         IRouter.Route memory route = IRouter.Route(from, to, true, router.defaultFactory());
         IRouter.Route[] memory routeArray = new IRouter.Route[](1);
         routeArray[0] = route;
@@ -332,8 +340,13 @@ contract DromeFarmer {
      * @notice Governance only function for setting acceptable slippage when swapping DOLA -> USDC
      * @param newMaxSlippageBps The new maximum allowed loss for DOLA -> USDC swaps. 1 = 0.01%
      */
-    function setMaxSwapSlippage(address stable1, address stable2, uint newMaxSlippageBps) onlyRole(guardian, "guardian") external {
-        if (priceAboveEmergencyThreshold() && newMaxSlippageBps > maxGuardianSetableSlippageBps) revert MaxSlippageTooHigh();
+    function setMaxSwapSlippage(address stable1, address stable2, uint256 newMaxSlippageBps)
+        external
+        onlyRole(guardian, "guardian")
+    {
+        if (priceAboveEmergencyThreshold() && newMaxSlippageBps > maxGuardianSetableSlippageBps) {
+            revert MaxSlippageTooHigh();
+        }
         maxSwapSlippage[stable1][stable2] = newMaxSlippageBps;
         maxSwapSlippage[stable2][stable2] = newMaxSlippageBps;
     }
@@ -342,8 +355,10 @@ contract DromeFarmer {
      * @notice Governance only function for setting acceptable slippage when adding or removing liquidty from DOLA/USDC pool
      * @param newMaxSlippageBps The new maximum allowed loss for adding/removing liquidity from DOLA/USDC pool. 1 = 0.01%
      */
-    function setMaxSlippageLP(uint newMaxSlippageBps) onlyRole(guardian, "guardian") external {
-        if (priceAboveEmergencyThreshold() && newMaxSlippageBps > maxGuardianSetableSlippageBps) revert MaxSlippageTooHigh();
+    function setMaxSlippageLP(uint256 newMaxSlippageBps) external onlyRole(guardian, "guardian") {
+        if (priceAboveEmergencyThreshold() && newMaxSlippageBps > maxGuardianSetableSlippageBps) {
+            revert MaxSlippageTooHigh();
+        }
         maxSlippageBps = newMaxSlippageBps;
     }
 
@@ -351,17 +366,17 @@ contract DromeFarmer {
      * @notice Sets the depeg emergency threshold. At 9800 if USDC price drops to $0.98, the guardian address can set slippage parameters as they please.
      * @param _depegEmergencyThresholdBps Depeg emergency threshold in bps, at 10000 lets guardian set slippage parameters at $1 USDC price, at 5000 lets guardian set slippage parameters at $0.5 usdc price.
      */
-    function setDepegEmergencyThresholdBps(uint _depegEmergencyThresholdBps) external onlyL1Role(gov, "gov") {
-        if(_depegEmergencyThresholdBps > 10000) revert MaxSlippageTooHigh();
+    function setDepegEmergencyThresholdBps(uint256 _depegEmergencyThresholdBps) external onlyL1Role(gov, "gov") {
+        if (_depegEmergencyThresholdBps > 10000) revert MaxSlippageTooHigh();
         depegEmergencyThresholdBps = _depegEmergencyThresholdBps;
     }
-    
+
     /**
      * @notice Sets the maximum slippage setable by the guardian role
      * @param _maxGuardianSetableSlippageBps Max slippage in BPS setable by the guardian role
      */
-    function setMaxGuardianSetableSlippageBps(uint _maxGuardianSetableSlippageBps) external onlyL1Role(gov, "gov") {
-        if(_maxGuardianSetableSlippageBps > 10000) revert MaxSlippageTooHigh();
+    function setMaxGuardianSetableSlippageBps(uint256 _maxGuardianSetableSlippageBps) external onlyL1Role(gov, "gov") {
+        if (_maxGuardianSetableSlippageBps > 10000) revert MaxSlippageTooHigh();
         maxGuardianSetableSlippageBps = _maxGuardianSetableSlippageBps;
     }
 
@@ -371,7 +386,7 @@ contract DromeFarmer {
      * @param l2Token Address of the L2 token to be withdrawn
      * @param amount Amount of the L2 token to be withdrawn
      */
-    function emergencyWithdraw(address l2Token, uint amount) external onlyL1Role(gov, "gov") {
+    function emergencyWithdraw(address l2Token, uint256 amount) external onlyL1Role(gov, "gov") {
         if (amount > IERC20(l2Token).balanceOf(address(this))) revert NotEnoughTokens();
         IERC20(l2Token).transfer(TWG, amount);
     }
@@ -382,7 +397,7 @@ contract DromeFarmer {
      * @dev `pendingGov` should be an L1 address
      * @param _pendingGov L1 address to be set as `pendingGov`
      */
-    function setPendingGov(address _pendingGov) onlyL1Role(gov, "gov") external {
+    function setPendingGov(address _pendingGov) external onlyL1Role(gov, "gov") {
         pendingGov = _pendingGov;
     }
 

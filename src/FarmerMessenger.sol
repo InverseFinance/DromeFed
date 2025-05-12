@@ -1,34 +1,33 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
+
 import {DromeFarmer} from "src/DromeFarmer.sol";
 
 /**
  * @title ICrossDomainMessenger
  */
 interface ICrossDomainMessenger {
-    /**********
+    /**
+     *
      * Events *
-     **********/
-
-    event SentMessage(
-        address indexed target,
-        address sender,
-        bytes message,
-        uint256 messageNonce,
-        uint256 gasLimit
-    );
+     *
+     */
+    event SentMessage(address indexed target, address sender, bytes message, uint256 messageNonce, uint256 gasLimit);
     event RelayedMessage(bytes32 indexed msgHash);
     event FailedRelayedMessage(bytes32 indexed msgHash);
 
-    /*************
+    /**
+     *
      * Variables *
-     *************/
-
+     *
+     */
     function xDomainMessageSender() external view returns (address);
 
-    /********************
+    /**
+     *
      * Public Functions *
-     ********************/
+     *
+     */
 
     /**
      * Sends a cross domain message to the target messenger.
@@ -36,11 +35,7 @@ interface ICrossDomainMessenger {
      * @param _message Message to send to the target.
      * @param _gasLimit Gas limit for the provided message.
      */
-    function sendMessage(
-        address _target,
-        bytes calldata _message,
-        uint32 _gasLimit
-    ) external;
+    function sendMessage(address _target, bytes calldata _message, uint32 _gasLimit) external;
 }
 
 contract FarmerMessenger {
@@ -55,14 +50,14 @@ contract FarmerMessenger {
         gov = _gov;
         dromeFarmer = _dromeFarmer;
         crossDomainMessenger = ICrossDomainMessenger(_bridge);
-    } 
+    }
 
-    modifier onlyGov {
+    modifier onlyGov() {
         if (msg.sender != gov) revert OnlyGov();
         _;
     }
 
-    modifier onlyPendingGov {
+    modifier onlyPendingGov() {
         if (msg.sender != pendingGov) revert OnlyPendingGov();
         _;
     }
@@ -80,41 +75,47 @@ contract FarmerMessenger {
 
     //Gov Messaging functions
 
-    function setMaxGuardianSetableSlippage(uint _maxGuardianSetableSlippageBps) public onlyGov {
+    function setMaxGuardianSetableSlippage(uint256 _maxGuardianSetableSlippageBps) public onlyGov {
         require(_maxGuardianSetableSlippageBps <= 10000, "Max slippage above 100%");
-        sendMessage(abi.encodeWithSelector(DromeFarmer.setMaxGuardianSetableSlippageBps.selector, _maxGuardianSetableSlippageBps));
+        sendMessage(
+            abi.encodeWithSelector(
+                DromeFarmer.setMaxGuardianSetableSlippageBps.selector, _maxGuardianSetableSlippageBps
+            )
+        );
     }
 
-    function setDepegEmergencyThreshold(uint _depegEmergencyThresholdBps) public onlyGov {
+    function setDepegEmergencyThreshold(uint256 _depegEmergencyThresholdBps) public onlyGov {
         require(_depegEmergencyThresholdBps <= 10000, "Threshold above 100%");
-        sendMessage(abi.encodeWithSelector(DromeFarmer.setDepegEmergencyThresholdBps.selector, _depegEmergencyThresholdBps));
+        sendMessage(
+            abi.encodeWithSelector(DromeFarmer.setDepegEmergencyThresholdBps.selector, _depegEmergencyThresholdBps)
+        );
     }
 
     function setPendingGov(address _pendingGov) public onlyGov {
         sendMessage(abi.encodeWithSelector(DromeFarmer.setPendingGov.selector, _pendingGov));
     }
-    
+
     function claimGov() public onlyGov {
         sendMessage(abi.encodeWithSelector(DromeFarmer.claimGov.selector));
     }
-    
+
     function changeTreasury(address _treasury) public onlyGov {
         sendMessage(abi.encodeWithSelector(DromeFarmer.changeTreasury.selector, _treasury));
     }
-    
+
     function changeChair(address _chair) public onlyGov {
         sendMessage(abi.encodeWithSelector(DromeFarmer.changeChair.selector, _chair));
     }
-    
+
     function changeGuardian(address _guardian) public onlyGov {
         sendMessage(abi.encodeWithSelector(DromeFarmer.changeGuardian.selector, _guardian));
     }
-    
+
     function changeL1Fed(address _fed) public onlyGov {
         sendMessage(abi.encodeWithSelector(DromeFarmer.changeL1Fed.selector, _fed));
     }
 
-    function emergencyWithdraw(address _l2Token, uint _amount) public onlyGov {
+    function emergencyWithdraw(address _l2Token, uint256 _amount) public onlyGov {
         sendMessage(abi.encodeWithSelector(DromeFarmer.emergencyWithdraw.selector, _l2Token, _amount));
     }
 
