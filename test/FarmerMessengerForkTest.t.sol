@@ -21,7 +21,7 @@ contract MockBridge is ICrossDomainMessenger {
         xDomainMessageSender = address(0);
     }
 
-    function relayMessage(address, address, bytes calldata, uint256) external pure{
+    function relayMessage(address, address, bytes calldata, uint256) external pure {
         revert("Not implemented");
     }
 }
