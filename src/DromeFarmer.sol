@@ -52,10 +52,8 @@ contract DromeFarmer {
     error OnlyRole(address, string);
     error OnlyL1Role(address, string);
     error MaxSlippageTooHigh();
-    //error ThresholdTooHigh();
     error NotEnoughTokens();
     error SlippageTooHigh();
-    error RestrictedToken();
 
     constructor(
         address _chair,
@@ -348,7 +346,7 @@ contract DromeFarmer {
             revert MaxSlippageTooHigh();
         }
         maxSwapSlippage[stable1][stable2] = newMaxSlippageBps;
-        maxSwapSlippage[stable2][stable2] = newMaxSlippageBps;
+        maxSwapSlippage[stable2][stable1] = newMaxSlippageBps;
     }
 
     /**

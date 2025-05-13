@@ -410,6 +410,14 @@ contract DromeFarmerForkTest is Test {
         assertEq(dromeFarmer.priceAboveEmergencyThreshold(), false, "Price above emergency threshold");
     }
 
+    function test_setMaxSwapSlippage() public {
+        vm.startPrank(guardian);
+
+        dromeFarmer.setMaxSwapSlippage(address(DOLA), address(USDC), 100);
+        assertEq(dromeFarmer.maxSwapSlippage(address(DOLA), address(USDC)), 100);
+        assertEq(dromeFarmer.maxSwapSlippage(address(USDC), address(DOLA)), 100);
+    }
+
     function test_setMaxSwapSlippage_fail_whenCalledByNonGov() public {
         vm.startPrank(user);
 
@@ -430,6 +438,13 @@ contract DromeFarmerForkTest is Test {
 
         mockUsdcPrice(0.5 * 1e8);
         dromeFarmer.setMaxSwapSlippage(address(DOLA), address(USDC), 9999);
+    }
+
+    function test_setMaxSlippage() public {
+        vm.startPrank(guardian);
+
+        dromeFarmer.setMaxSlippageLP(100);
+        assertEq(dromeFarmer.maxSlippageBps(), 100);
     }
 
     function test_setMaxSlippageLP_fail_whenCalledByNonGov() public {

@@ -63,9 +63,7 @@ contract FarmerMessenger {
     }
 
     error OnlyGov();
-    error OnlyGovOrGuardian();
     error OnlyPendingGov();
-    error OnlyChair();
 
     //Helper functions
 
