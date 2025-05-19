@@ -387,7 +387,7 @@ contract DromeFarmer {
     /**
      * @notice Sets the depeg emergency price threshold.
      * @dev The emergency price threshold limits the powers of the guardian role to set slippage params when above it.
-     * @param _emergencyPriceThreshold Depeg emergency price threshold. Uses the price decimals of the underlying chainlink oracle. For USDC that will be 8 decimals. 
+     * @param _emergencyPriceThreshold Depeg emergency price threshold. Uses the price decimals of the underlying chainlink oracle. For USDC that will be 8 decimals.
      */
     function setEmergencyPriceThreshold(uint256 _emergencyPriceThreshold) external onlyL1Role(gov, "gov") {
         uint8 decimals = usdcPriceFeed.decimals();
@@ -399,6 +399,7 @@ contract DromeFarmer {
      * @dev The USDC Price Threshold limits the ability of the fed to buy USDC if the stable is depegging
      * @param _USDCPriceThreshold The USDC Price Threshold. Uses the decimals of the underlying chainlink oracle. For USDC that will be 8 decimals.
      */
+
     function setUSDCPriceThreshold(uint256 _USDCPriceThreshold) external onlyL1Role(gov, "gov") {
         uint8 decimals = usdcPriceFeed.decimals();
         require(_USDCPriceThreshold <= 10 ** decimals && _USDCPriceThreshold >= 10 ** (decimals - 1));
