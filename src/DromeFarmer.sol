@@ -317,6 +317,7 @@ contract DromeFarmer {
         }
     }
 
+    //Helper function for checking if the usdc oracle price is above the threshold price
     function priceAboveThreshold(uint256 threshold) public view returns (bool) {
         (, int256 usdcPrice,,,) = usdcPriceFeed.latestRoundData();
         return usdcPrice > int256(threshold);
@@ -384,15 +385,20 @@ contract DromeFarmer {
     }
 
     /**
-     * @notice Sets the depeg emergency threshold. At 9800 if USDC price drops to $0.98, the guardian address can set slippage parameters as they please.
-     * @param _emergencyPriceThreshold Depeg emergency threshold in bps, at 10000 lets guardian set slippage parameters at $1 USDC price, at 5000 lets guardian set slippage parameters at $0.5 usdc price.
+     * @notice Sets the depeg emergency price threshold.
+     * @dev The emergency price threshold limits the powers of the guardian role to set slippage params when above it.
+     * @param _emergencyPriceThreshold Depeg emergency price threshold. Uses the price decimals of the underlying chainlink oracle. For USDC that will be 8 decimals. 
      */
     function setEmergencyPriceThreshold(uint256 _emergencyPriceThreshold) external onlyL1Role(gov, "gov") {
         uint8 decimals = usdcPriceFeed.decimals();
         require(_emergencyPriceThreshold <= 10 ** decimals && _emergencyPriceThreshold >= 10 ** (decimals - 1));
         emergencyPriceThreshold = _emergencyPriceThreshold;
     }
-
+    /**
+     * @notice Sets the USDC price threshold, below which the fed is blocked from buying USDC.
+     * @dev The USDC Price Threshold limits the ability of the fed to buy USDC if the stable is depegging
+     * @param _USDCPriceThreshold The USDC Price Threshold. Uses the decimals of the underlying chainlink oracle. For USDC that will be 8 decimals.
+     */
     function setUSDCPriceThreshold(uint256 _USDCPriceThreshold) external onlyL1Role(gov, "gov") {
         uint8 decimals = usdcPriceFeed.decimals();
         require(_USDCPriceThreshold <= 10 ** decimals && _USDCPriceThreshold >= 10 ** (decimals - 1));
