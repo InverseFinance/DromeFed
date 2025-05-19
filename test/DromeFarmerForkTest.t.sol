@@ -22,6 +22,7 @@ contract DromeFarmerForkTest is Test {
     address public l1Fed = address(0xA);
     ICrossDomainMessenger public l2CrossDomainMessenger =
         ICrossDomainMessenger(0x4200000000000000000000000000000000000007);
+    IChainlinkPriceFeed usdcPriceFeed = IChainlinkPriceFeed(0x7e860098F58bBFC8648a4311b374B1D669a2bc6B);
     address public l1CrossDomainMessenger = 0x36BDE71C97B33Cc4729cf772aE268934f7AB70B2;
     address public TWG = 0x586CF50c2874f3e3997660c0FD0996B090FB9764;
     address public cctpBridge = 0x1682Ae6375C4E4A97e4B583BC394c861A46D8962;
@@ -52,18 +53,10 @@ contract DromeFarmerForkTest is Test {
         vm.label(address(USDC), "USDC");
         vm.label(address(DOLA), "DOLA");
 
+        DromeFarmer.Admin memory admin = DromeFarmer.Admin(chair, guardian, TWG, gov);
+
         dromeFarmer = new DromeFarmer(
-            chair,
-            guardian,
-            TWG,
-            gov,
-            cctpBridge,
-            l1Fed,
-            address(DOLA),
-            address(USDC),
-            address(nUSDC),
-            router,
-            dolaGauge
+            admin, cctpBridge, l1Fed, address(DOLA), address(USDC), address(nUSDC), usdcPriceFeed, router, dolaGauge
         );
 
         vm.startPrank(address(l2CrossDomainMessenger));
@@ -93,6 +86,18 @@ contract DromeFarmerForkTest is Test {
         assertGt(nUSDC.balanceOf(address(dromeFarmer)), 0, "No USDC swapped");
     }
 
+    function test_swapStablesDolaToUSDCNative_failsWhenPriceBelowThreshold() public {
+        deal(address(DOLA), address(dromeFarmer), dolaAmount * 3);
+
+        vm.prank(guardian);
+        dromeFarmer.setMaxSwapSlippage(address(DOLA), address(nUSDC), 1000);
+
+        mockUsdcPrice(1e8 / 2);
+        vm.prank(chair);
+        vm.expectRevert("price below min threshold");
+        dromeFarmer.swapStables(address(DOLA), address(nUSDC), dolaAmount * 3);
+    }
+
     function test_swapUsdcNativeToDola() public {
         deal(address(nUSDC), address(dromeFarmer), USDCAmount);
 
@@ -120,6 +125,20 @@ contract DromeFarmerForkTest is Test {
 
         assertEq(dromeFarmer.lpToken().balanceOf(address(dromeFarmer)), 0);
         assertGt(rewardToken.balanceOf(address(TWG)), initialRewards, "No rewards claimed");
+    }
+
+    function test_deposit_failsWhenUsdcPriceBelowThreshold() public {
+        deal(address(DOLA), address(dromeFarmer), dolaAmount * 3);
+        deal(address(nUSDC), address(dromeFarmer), USDCAmount * 3);
+
+        vm.prank(guardian);
+        dromeFarmer.setMaxSlippageLP(1000);
+
+        vm.startPrank(chair);
+        mockUsdcPrice(1e8 / 2);
+        uint256 dolaBal = DOLA.balanceOf(address(dromeFarmer));
+        vm.expectRevert("price below min threshold");
+        dromeFarmer.deposit(dolaBal, USDCAmount / 2);
     }
 
     function test_depositAll() public {
@@ -404,10 +423,10 @@ contract DromeFarmerForkTest is Test {
         dromeFarmer.resign();
     }
 
-    function test_priceAboveEmergencyThreshold() public {
-        assertEq(dromeFarmer.priceAboveEmergencyThreshold(), true, "Price below emergency threshold");
-        mockUsdcPrice(0.5 * 1e8);
-        assertEq(dromeFarmer.priceAboveEmergencyThreshold(), false, "Price above emergency threshold");
+    function test_priceAboveThreshold() public {
+        assertEq(dromeFarmer.priceAboveThreshold(0.995e8), true, "Price below emergency threshold");
+        mockUsdcPrice(1e8 / 2);
+        assertEq(dromeFarmer.priceAboveThreshold(0.995e8), false, "Price above emergency threshold");
     }
 
     function test_setMaxSwapSlippage() public {

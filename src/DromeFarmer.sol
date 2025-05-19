@@ -32,18 +32,19 @@ contract DromeFarmer {
     mapping(address => bool) public allowedSwaps;
     uint256 public maxSlippageBps;
     uint256 public maxGuardianSetableSlippageBps = 500;
-    uint256 public depegEmergencyThresholdBps = 9800; //If USDC depegs by more than 2%, guardian msig can set emergency slippage parameters
+    uint256 public emergencyPriceThreshold = 0.98e8; //Chainlink price threshold below which guardian role can fully set slippage parameters
+    uint256 public USDCPriceThreshold = 0.995e8; //Chainlink price threshold below which no purchases of USDC may be made
 
     uint256 public constant DOLA_USDC_CONVERSION_MULTI = 1e12;
     ICrossDomainMessenger public constant ovmL2CrossDomainMessenger =
         ICrossDomainMessenger(0x4200000000000000000000000000000000000007);
     IL2ERC20Bridge public constant bridge = IL2ERC20Bridge(0x4200000000000000000000000000000000000010);
-    IChainlinkPriceFeed public constant usdcPriceFeed = IChainlinkPriceFeed(0x7e860098F58bBFC8648a4311b374B1D669a2bc6B);
+    IChainlinkPriceFeed public immutable usdcPriceFeed;
 
-    IGauge public immutable dolaGauge; // = IGauge(0xCCff5627cd544b4cBb7d048139C1A6b6Bde67885);
+    IGauge public immutable dolaGauge;
     IPool public immutable lpToken;
     IERC20 public immutable rewardToken;
-    IRouter public immutable router; // = IRouter(0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43);
+    IRouter public immutable router;
     IERC20 public immutable DOLA;
     IERC20 public immutable nUSDC;
     IERC20 public immutable USDC;
@@ -55,23 +56,28 @@ contract DromeFarmer {
     error NotEnoughTokens();
     error SlippageTooHigh();
 
+    struct Admin {
+        address chair;
+        address guardian;
+        address l2Treasury;
+        address govMessenger;
+    }
+
     constructor(
-        address _chair,
-        address _guardian,
-        address _TWG,
-        address _gov,
+        Admin memory admin,
         address cctpBridge,
         address _l1Fed,
         address _dola,
         address _usdc,
         address _nusdc,
+        IChainlinkPriceFeed _usdcPriceFeed,
         IRouter _router,
         IGauge _dolaGauge
     ) {
-        gov = _gov;
-        chair = _chair;
-        TWG = _TWG;
-        guardian = _guardian;
+        gov = admin.govMessenger;
+        chair = admin.chair;
+        TWG = admin.l2Treasury;
+        guardian = admin.guardian;
         cctp = ICCTP(cctpBridge);
         l1Fed = _l1Fed;
         DOLA = IERC20(_dola);
@@ -79,6 +85,7 @@ contract DromeFarmer {
         nUSDC = IERC20(_nusdc);
         router = _router;
         dolaGauge = _dolaGauge;
+        usdcPriceFeed = _usdcPriceFeed;
         rewardToken = IERC20(_dolaGauge.rewardToken());
         lpToken = IPool(_dolaGauge.stakingToken());
         allowedSwaps[_dola] = true;
@@ -132,6 +139,9 @@ contract DromeFarmer {
             address(DOLA), address(nUSDC), true, dolaAmount, usdcAmount, 0, 0, address(this), block.timestamp
         );
         require(lpTokensReceived > 0, "No LP tokens received");
+        if (usdcSpent * DOLA_USDC_CONVERSION_MULTI < dolaSpent) {
+            require(priceAboveThreshold(USDCPriceThreshold), "price below min threshold");
+        }
 
         uint256 totalDolaValue = usdcSpent * DOLA_USDC_CONVERSION_MULTI + dolaSpent;
 
@@ -178,9 +188,9 @@ contract DromeFarmer {
             address(nUSDC), address(DOLA), true, liquidityToWithdraw, 0, 0, address(this), block.timestamp
         );
 
-        uint256 totalDolaReceived = amountDola + (amountUSDC * DOLA_USDC_CONVERSION_MULTI);
+        uint256 totalDolaValueReceived = amountDola + getDolaPrice(amountUSDC);
 
-        if (applySlippage(dolaAmount, maxSlippageBps) > totalDolaReceived) {
+        if (applySlippage(dolaAmount, maxSlippageBps) > totalDolaValueReceived) {
             revert SlippageTooHigh();
         }
 
@@ -257,6 +267,9 @@ contract DromeFarmer {
         require(sellStable != buyStable, "same stable");
         require(allowedSwaps[sellStable], "sellStable not allowed");
         require(allowedSwaps[buyStable], "buyStable not allowed");
+        if (buyStable == address(USDC) || buyStable == address(nUSDC)) {
+            require(priceAboveThreshold(USDCPriceThreshold), "price below min threshold");
+        }
         uint256 minOut = applySwapSlippage(amount, sellStable, buyStable);
 
         IERC20(sellStable).approve(address(router), amount);
@@ -267,6 +280,17 @@ contract DromeFarmer {
         (uint256 reservesDOLA, uint256 reservesNUSDC,) = lpToken.getReserves();
         uint256 k = _k(reservesDOLA, reservesNUSDC, 10 ** DOLA.decimals(), 10 ** nUSDC.decimals());
         return 2 * sqrt(sqrt(k / 2)) * 1e18 / lpToken.totalSupply();
+    }
+
+    // We assume DOLA is always worth 1$
+    function getDolaPrice(uint256 usdcAmount) public view returns (uint256) {
+        (, int256 usdcPrice,,,) = usdcPriceFeed.latestRoundData();
+        if (usdcPrice <= 0) return 1;
+        uint8 decimals = usdcPriceFeed.decimals();
+        uint256 normalizedAmount = usdcAmount * DOLA_USDC_CONVERSION_MULTI;
+        //If usdcPrice > 1$ cap price at 1$
+        if (uint256(usdcPrice) > 10 ** decimals) return normalizedAmount;
+        return normalizedAmount * uint256(usdcPrice) / 10 ** decimals;
     }
 
     // from Velodrome pool
@@ -293,10 +317,9 @@ contract DromeFarmer {
         }
     }
 
-    function priceAboveEmergencyThreshold() public view returns (bool) {
+    function priceAboveThreshold(uint256 threshold) public view returns (bool) {
         (, int256 usdcPrice,,,) = usdcPriceFeed.latestRoundData();
-        uint8 decimals = usdcPriceFeed.decimals();
-        return usdcPrice > int256(10 ** decimals * depegEmergencyThresholdBps / 10000);
+        return usdcPrice > int256(threshold);
     }
 
     function applySwapSlippage(uint256 amount, address sellStable, address buyStable) internal view returns (uint256) {
@@ -342,7 +365,7 @@ contract DromeFarmer {
         external
         onlyRole(guardian, "guardian")
     {
-        if (priceAboveEmergencyThreshold() && newMaxSlippageBps > maxGuardianSetableSlippageBps) {
+        if (priceAboveThreshold(emergencyPriceThreshold) && newMaxSlippageBps > maxGuardianSetableSlippageBps) {
             revert MaxSlippageTooHigh();
         }
         maxSwapSlippage[stable1][stable2] = newMaxSlippageBps;
@@ -354,7 +377,7 @@ contract DromeFarmer {
      * @param newMaxSlippageBps The new maximum allowed loss for adding/removing liquidity from DOLA/USDC pool. 1 = 0.01%
      */
     function setMaxSlippageLP(uint256 newMaxSlippageBps) external onlyRole(guardian, "guardian") {
-        if (priceAboveEmergencyThreshold() && newMaxSlippageBps > maxGuardianSetableSlippageBps) {
+        if (priceAboveThreshold(emergencyPriceThreshold) && newMaxSlippageBps > maxGuardianSetableSlippageBps) {
             revert MaxSlippageTooHigh();
         }
         maxSlippageBps = newMaxSlippageBps;
@@ -362,11 +385,18 @@ contract DromeFarmer {
 
     /**
      * @notice Sets the depeg emergency threshold. At 9800 if USDC price drops to $0.98, the guardian address can set slippage parameters as they please.
-     * @param _depegEmergencyThresholdBps Depeg emergency threshold in bps, at 10000 lets guardian set slippage parameters at $1 USDC price, at 5000 lets guardian set slippage parameters at $0.5 usdc price.
+     * @param _emergencyPriceThreshold Depeg emergency threshold in bps, at 10000 lets guardian set slippage parameters at $1 USDC price, at 5000 lets guardian set slippage parameters at $0.5 usdc price.
      */
-    function setDepegEmergencyThresholdBps(uint256 _depegEmergencyThresholdBps) external onlyL1Role(gov, "gov") {
-        if (_depegEmergencyThresholdBps > 10000) revert MaxSlippageTooHigh();
-        depegEmergencyThresholdBps = _depegEmergencyThresholdBps;
+    function setEmergencyPriceThreshold(uint256 _emergencyPriceThreshold) external onlyL1Role(gov, "gov") {
+        uint8 decimals = usdcPriceFeed.decimals();
+        require(_emergencyPriceThreshold <= 10 ** decimals && _emergencyPriceThreshold >= 10 ** (decimals - 1));
+        emergencyPriceThreshold = _emergencyPriceThreshold;
+    }
+
+    function setUSDCPriceThreshold(uint256 _USDCPriceThreshold) external onlyL1Role(gov, "gov") {
+        uint8 decimals = usdcPriceFeed.decimals();
+        require(_USDCPriceThreshold <= 10 ** decimals && _USDCPriceThreshold >= 10 ** (decimals - 1));
+        USDCPriceThreshold = _USDCPriceThreshold;
     }
 
     /**

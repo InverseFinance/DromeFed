@@ -7,7 +7,7 @@ import {IDola} from "src/interfaces/IDola.sol";
 import "src/interfaces/ICrossDomainMessenger.sol";
 import "src/interfaces/IRouter.sol";
 import "src/interfaces/IGauge.sol";
-import {DromeFarmer} from "src/DromeFarmer.sol";
+import {DromeFarmer, IChainlinkPriceFeed} from "src/DromeFarmer.sol";
 import {FarmerMessenger} from "src/FarmerMessenger.sol";
 import {console} from "forge-std/console.sol";
 
@@ -38,6 +38,7 @@ contract FarmerMessengerForkTest is Test {
     address public l1Fed = address(0xA);
     ICrossDomainMessenger public l2CrossDomainMessenger =
         ICrossDomainMessenger(0x4200000000000000000000000000000000000007);
+    IChainlinkPriceFeed usdcPriceFeed = IChainlinkPriceFeed(0x7e860098F58bBFC8648a4311b374B1D669a2bc6B);
     address public l1CrossDomainMessenger = 0x36BDE71C97B33Cc4729cf772aE268934f7AB70B2;
     address public TWG = 0x586CF50c2874f3e3997660c0FD0996B090FB9764;
     address public cctpBridge = 0x1682Ae6375C4E4A97e4B583BC394c861A46D8962;
@@ -70,18 +71,9 @@ contract FarmerMessengerForkTest is Test {
         vm.etch(address(l2CrossDomainMessenger), address(new MockBridge()).code);
 
         farmerMessenger = new FarmerMessenger(gov, address(0), address(l2CrossDomainMessenger));
+        DromeFarmer.Admin memory admin = DromeFarmer.Admin(chair, guardian, TWG, address(farmerMessenger));
         dromeFarmer = new DromeFarmer(
-            chair,
-            guardian,
-            TWG,
-            address(farmerMessenger),
-            cctpBridge,
-            l1Fed,
-            address(DOLA),
-            address(USDC),
-            address(nUSDC),
-            router,
-            dolaGauge
+            admin, cctpBridge, l1Fed, address(DOLA), address(USDC), address(nUSDC), usdcPriceFeed, router, dolaGauge
         );
         //Inject l2CrossDomainMessenger as bridge to simulate actions
         vm.prank(gov);

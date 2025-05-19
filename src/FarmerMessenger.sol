@@ -82,11 +82,12 @@ contract FarmerMessenger {
         );
     }
 
-    function setDepegEmergencyThreshold(uint256 _depegEmergencyThresholdBps) public onlyGov {
-        require(_depegEmergencyThresholdBps <= 10000, "Threshold above 100%");
-        sendMessage(
-            abi.encodeWithSelector(DromeFarmer.setDepegEmergencyThresholdBps.selector, _depegEmergencyThresholdBps)
-        );
+    function setUSDCPriceThreshold(uint256 _USDCPriceThreshold) public onlyGov {
+        sendMessage(abi.encodeWithSelector(DromeFarmer.setUSDCPriceThreshold.selector, _USDCPriceThreshold));
+    }
+
+    function setEmergencyPriceThreshold(uint256 _emergencyPriceThreshold) public onlyGov {
+        sendMessage(abi.encodeWithSelector(DromeFarmer.setEmergencyPriceThreshold.selector, _emergencyPriceThreshold));
     }
 
     function setPendingGov(address _pendingGov) public onlyGov {
