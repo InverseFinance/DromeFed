@@ -7,4 +7,4 @@ libs = ["lib"]
 [rpc_endpoints]
 base = "${RPC_BASE}"
 opti = "${RPC_OPTI}"
- 
+mainnet = "${RPC_MAINNET}" 
