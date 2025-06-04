@@ -1,6 +1,7 @@
 pragma solidity ^0.8.13;
+
 interface ICCTP {
-      /**
+    /**
      * @notice Deposits and burns tokens from sender to be minted on destination domain.
      * Emits a `DepositForBurn` event.
      * @dev reverts if:
@@ -16,10 +17,7 @@ interface ICCTP {
      * @param burnToken address of contract to burn deposited tokens, on local domain
      * @return _nonce unique nonce reserved by message
      */
-    function depositForBurn(
-        uint256 amount,
-        uint32 destinationDomain,
-        bytes32 mintRecipient,
-        address burnToken
-    ) external returns (uint64 _nonce);
+    function depositForBurn(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken)
+        external
+        returns (uint64 _nonce);
 }
